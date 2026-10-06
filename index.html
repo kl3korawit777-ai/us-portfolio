@@ -340,7 +340,7 @@ function hero(t){
       </div>
       <div class="split-legend"><span>จากราคาหุ้น <b class="${cls(a)}">${sgn(a)}</b></span><span>จากค่าเงิน <b class="${cls(b)}">${sgn(b)}</b></span></div>
     </div>` : ''}
-    <p class="meta"><span id="fxLine">${fxInner()}</span><br>ราคาล่าสุดเมื่อ ${when(lastPriceAt())}</p>
+    <p class="meta"><span id="fxLine">${fxInner()}</span><br>ราคาล่าสุดเมื่อ ${when(lastPriceAt())} <span id="mktLbl">${mktHTML()}</span></p>
     ${S.settings.fxSpread > 0 ? `<p class="meta" style="margin-top:4px">ถ้าขายและแลกกลับตอนนี้ ≈ ${fmt(t.vUSD * Math.max(0, fx() - S.settings.fxSpread))} บาท</p>` : ''}
   </section>`;
 }
@@ -789,7 +789,7 @@ async function getJSON(url){ const r = await fetch(url); if(!r.ok) throw new Err
 async function refresh(fromUser){
   if(busy) return;
   if(!navigator.onLine){ updateOffline(); toast('ออฟไลน์ ใช้ราคาล่าสุดที่บันทึกไว้'); return; }
-  busy = true;
+  busy = true; pxLast = Date.now();
   const btn = $('#refreshBtn'); btn.disabled = true; btn.textContent = 'กำลังอัปเดต…';
   const now = () => new Date().toISOString();
   const fxManual = S.settings.fxManual > 0;
@@ -810,6 +810,34 @@ async function refresh(fromUser){
   else if(!ok) toast('ดึงราคาไม่ได้เลย ตรวจ API key หรืออินเทอร์เน็ต');
   else if(fail.length) toast(`อัปเดต ${ok} ตัว ดึงไม่ได้: ${fail.join(', ')} (ใช้ราคาเดิม)`);
   else toast(`อัปเดตราคาครบ ${ok} ตัว` + (fromUser && !fxManual && !fxOk ? ' แต่ดึงค่าเงินไม่ได้' : ''));
+}
+
+/* ---------- ราคาหุ้นอัตโนมัติช่วงตลาดสหรัฐเปิด (จันทร์–ศุกร์ 9:30–16:00 เวลานิวยอร์ก ไม่นับวันหยุดตลาด) ---------- */
+let pxLast = 0;
+function usMarketOpen(d){
+  const p = new Intl.DateTimeFormat('en-US', {timeZone:'America/New_York', weekday:'short', hour:'numeric', minute:'numeric', hourCycle:'h23'}).formatToParts(d || new Date());
+  const g = t => p.find(x => x.type === t).value, wd = g('weekday'), m = +g('hour') * 60 + +g('minute');
+  return wd !== 'Sat' && wd !== 'Sun' && m >= 570 && m < 960;
+}
+const mktHTML = () => { const o = usMarketOpen(); return `<span class="fxb ${o ? 'live' : 'old'}">ตลาดหุ้น${o ? 'เปิด' : 'ปิด'}</span>`; };
+async function refreshAuto(){
+  const key = S.settings.apiKey;
+  if(busy || !key) return;
+  busy = true; pxLast = Date.now();
+  let ok = 0;
+  try{
+    await Promise.all(S.holdings.map(async h => {
+      try{
+        const j = await getJSON(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(h.ticker)}&token=${encodeURIComponent(key)}`);
+        if(j && j.c > 0){ h.price = j.c; h.changePct = j.dp ?? 0; h.priceAt = new Date().toISOString(); h.priceOk = true; ok++; }
+      }catch(e){}
+    }));
+  } finally { busy = false; }
+  if(ok){ save(); dataPaint(); }
+}
+function pxTick(){
+  if(document.hidden || busy || !S.settings.apiKey || !navigator.onLine || !usMarketOpen()) return;
+  if(Date.now() - pxLast >= 60000) refreshAuto();
 }
 
 /* ---------- คิว Twelve Data: ไม่เกิน 7 ครั้งต่อ 60 วินาที (หน้าต่างเลื่อน) ทุกคำขอต้องผ่านที่นี่ ---------- */
@@ -901,7 +929,7 @@ function fxWant(){
   if(!fxMarketOpen()) return fxAgeMs() > 3 * 86400000;
   return fxAgeMs() >= FX_EVERY - 1000;
 }
-function fxTick(){ if(fxWant()) fxFetch(false); }
+function fxTick(){ if(fxWant()) fxFetch(false); pxTick(); }
 function fxStart(){
   clearInterval(fxTimer); clearInterval(fxAgeTimer); fxTimer = fxAgeTimer = null;
   if(document.hidden) return;
@@ -928,7 +956,10 @@ function fxInner(){
 function fxPaint(changed){
   const line = $('#fxLine'); if(line) line.innerHTML = fxInner();
   const lbl = $('#fxAutoLbl'); if(lbl) lbl.textContent = fmt(S.fx.rate);
-  if(!changed) return;
+  const mk = $('#mktLbl'); if(mk) mk.innerHTML = mktHTML();
+  if(changed) dataPaint();
+}
+function dataPaint(){
   if(tab === 'chart' || tab === 'set') return;
   const a = document.activeElement;
   if(dlg.open || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && $('#view').contains(a))){ fxPending = true; return; }
