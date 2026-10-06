@@ -519,6 +519,8 @@ function viewSet(){
         <label class="field"><span>รวมเป็นโซนเดียวกันถ้าห่างไม่เกิน (%)</span><select id="set-srt">${opt([1,1.5,2,3],s.srTol)}</select></label>
       </div>
       <label class="field"><span>ช่วงข้อมูลที่ใช้คำนวณ</span><select id="set-srl">${opt([[6,'6 เดือน'],[12,'1 ปี'],[24,'2 ปี']],s.srLook)}</select></label>
+      <div class="actions" style="margin-top:0"><button class="btn" data-act="tddivtest">ทดสอบข้อมูลปันผล (/dividends)</button></div>
+      <pre id="tdDivOut" class="note muted" style="white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 0" hidden></pre>
     </section>
     <section class="block"><h2>ค่าเงินและภาษี</h2>
       <label class="field"><span>อัตราแลกเปลี่ยนแบบตั้งเอง (เว้นว่างเพื่อใช้อัตราอัตโนมัติ ${fmt(S.fx.rate)})</span><input id="set-fx" inputmode="decimal" value="${s.fxManual>0?s.fxManual:''}" placeholder="อัตโนมัติ"></label>
@@ -1379,6 +1381,26 @@ async function syncSignOut(){
 document.addEventListener('visibilitychange', () => { if(!document.hidden) syncNow('focus'); });
 window.addEventListener('online', () => syncNow('online'));
 
+/* ทดสอบว่า Twelve Data แพ็กเกจของผู้ใช้เรียก /dividends ได้ไหม (ใช้ key ที่ผู้ใช้ใส่ไว้ในเว็บเอง) */
+async function tdDivTest(){
+  const out = $('#tdDivOut'), key = S.settings.tdKey;
+  out.hidden = false;
+  if(!key){ out.textContent = 'ใส่ Twelve Data API key ในช่องด้านบนก่อน'; return; }
+  if(!navigator.onLine){ out.textContent = 'ออฟไลน์'; return; }
+  out.textContent = 'กำลังเรียก…';
+  try{
+    const r = await fetch(`https://api.twelvedata.com/dividends?symbol=IBM&range=1y&apikey=${encodeURIComponent(key)}`);
+    const txt = await r.text();
+    let j = null; try{ j = JSON.parse(txt); }catch(e){}
+    const n = j && Array.isArray(j.dividends) ? j.dividends.length : null;
+    const verdict = n ? `ใช้ได้: ได้ประวัติปันผล ${n} รายการ` : j && (j.status === 'error' || j.code) ? 'ใช้ไม่ได้หรือผิดพลาด: ดูข้อความด้านล่าง' : 'ผลไม่เป็นไปตามคาด: ดูข้อความด้านล่าง';
+    out.textContent = `HTTP ${r.status}
+${verdict}
+
+${txt.slice(0, 600)}`;
+  }catch(e){ out.textContent = 'เรียกไม่สำเร็จ: ' + errMsg(e); }
+}
+
 /* ---------- events ---------- */
 let tt;
 function toast(m){ const el = $('#toast'); el.textContent = m; el.classList.add('show'); clearTimeout(tt); tt = setTimeout(()=>el.classList.remove('show'), 3400); }
@@ -1412,6 +1434,7 @@ document.addEventListener('click', e => {
     case 'syncout': syncSignOut(); break;
     case 'syncpass': syncLoginPassword(); break;
     case 'synclink': syncSendLink(); break;
+    case 'tddivtest': tdDivTest(); break;
     case 'dcabuy': openBuy(id, +b.dataset.thb); break;
     case 'dcafetch': dcaFetchMissing(); break;
     case 'dcastop': if(dcaJob) dcaJob.stop = true; break;
