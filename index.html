@@ -155,6 +155,46 @@ dialog::backdrop{background:rgba(10,15,25,.55)}
   pointer-events:none;transition:opacity .2s;width:max-content;max-width:calc(100% - 32px);z-index:20}
 #toast.show{opacity:1}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.c,.thead{display:none}
+.fs-btn{margin-left:auto;min-height:44px}
+.chart-box:fullscreen{border:0;border-radius:0;margin:0;background:var(--surface)}
+@media (min-width:960px){
+  body{padding-top:57px}
+  .topbar,main{max-width:1240px;padding-left:32px;padding-right:32px}
+  .topbar{padding-top:16px}
+  main{padding-top:16px;padding-bottom:48px}
+  .offline{max-width:1176px}
+  nav.tabs{top:0;bottom:auto;border-top:0;border-bottom:1px solid var(--line);padding-bottom:0}
+  nav.tabs button[aria-current="page"]{box-shadow:inset 0 -3px 0 var(--accent)}
+  #toast{bottom:24px}
+
+  .port-wrap,.dca-wrap,.chart-wrap{display:grid;align-items:start;gap:0 32px}
+  .port-wrap,.dca-wrap{grid-template-columns:340px minmax(0,1fr)}
+  .chart-wrap{grid-template-columns:minmax(0,1fr) 340px;gap:0 24px}
+  .port-side,.dca-side,.chart-side{position:sticky;top:73px}
+  .hero{padding-top:0}
+
+  .ledger{--cols:minmax(0,1fr) 104px 84px 72px 124px}
+  .thead{display:grid;grid-template-columns:var(--cols);gap:0 12px;padding:10px 16px;font-size:.78rem;color:var(--muted);border-bottom:1px solid var(--line)}
+  .thead span:nth-child(n+2){text-align:right}
+  .row-head{grid-template-columns:var(--cols);grid-template-areas:"tk px sh yd val" "nm pxc sh yd pl";column-gap:12px;align-items:center}
+  .row-head .tk{grid-area:tk} .row-head .nm{grid-area:nm} .row-head .val{grid-area:val} .row-head .pl{grid-area:pl}
+  .c{display:block;text-align:right;font-weight:500}
+  .c-px{grid-area:px} .c-pxc{grid-area:pxc;font-size:.88rem} .c-sh{grid-area:sh} .c-yd{grid-area:yd}
+  .row-head:hover{background:var(--chip)}
+  .facts{grid-template-columns:repeat(4,1fr)}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .cols>.block{margin-bottom:0}
+  .chart-box{height:min(68vh,620px)}
+  @media (max-width:1199px){
+    .port-wrap,.dca-wrap{grid-template-columns:280px minmax(0,1fr);gap:0 24px}
+    .chart-wrap{grid-template-columns:minmax(0,1fr) 280px;gap:0 20px}
+    .hero-value{font-size:2.6rem}
+    .ledger{--cols:minmax(0,1fr) 84px 60px 56px 104px}
+    .thead,.row-head{column-gap:8px}
+  }
+}
 </style>
 </head>
 <body>
@@ -333,6 +373,10 @@ function rowHTML({h,c},t){
       <span class="val">${fmt(c.vTHB)} ฿</span>
       <span class="nm">${esc(h.name)}</span>
       <span class="pl ${cls(c.plPctUSD)}">${sgn(c.plPctUSD)}%</span>
+      <span class="c c-px">${fmt(h.price)}</span>
+      <span class="c c-pxc ${cls(h.changePct)}">${sgn(h.changePct)}%</span>
+      <span class="c c-sh">${fmt(t.vTHB ? c.vTHB/t.vTHB*100 : 0, 1)}%</span>
+      <span class="c c-yd">${h.div && h.yield > 0 ? fmt(h.yield)+'%' : '–'}</span>
     </button>
     ${open ? detail(h,c,t) : ''}
   </li>`;
@@ -349,10 +393,10 @@ function viewPort(){
     pl:(a,b)=>b.c.plPctUSD-a.c.plPctUSD
   };
   list.sort(by[sort]);
-  return hero(t) + toolbar() +
-    `<ul class="ledger">${list.map(r=>rowHTML(r,t)).join('') || '<li class="empty muted">ไม่มีหุ้นในตัวกรองนี้</li>'}</ul>
+  return `<div class="port-wrap"><aside class="port-side">${hero(t)}</aside><div class="port-main">` + toolbar() +
+    `<ul class="ledger"><li class="thead"><span>หุ้น</span><span>ราคา (USD)</span><span>สัดส่วน</span><span>ปันผล</span><span>มูลค่า (บาท)</span></li>${list.map(r=>rowHTML(r,t)).join('') || '<li class="empty muted">ไม่มีหุ้นในตัวกรองนี้</li>'}</ul>
      <p class="note muted">% ข้างมูลค่าคือกำไรจากราคาหุ้น (USD) แตะแต่ละตัวเพื่อดูกำไรเป็นบาทแยกส่วนค่าเงิน</p>
-     <div class="actions"><button class="btn" data-act="add">+ เพิ่มหุ้น</button></div>`;
+     <div class="actions"><button class="btn" data-act="add">+ เพิ่มหุ้น</button></div></div></div>`;
 }
 
 const stat = (k,v) => `<div class="stat"><span class="muted">${k}</span><span>${v}</span></div>`;
@@ -381,7 +425,7 @@ function viewOver(){
   }).join('');
 
   const yieldPct = t.vUSD ? t.divUSD/t.vUSD*100 : 0;
-  return `<section class="block"><h2>ภาพรวม</h2>
+  return `<div class="cols"><section class="block"><h2>ภาพรวม</h2>
       ${stat('มูลค่าพอร์ต', fmt(t.vTHB)+' บาท')}
       ${stat('เงินต้น', fmt(t.costTHB)+' บาท')}
       ${stat('กำไร/ขาดทุน', `<span class="${cls(t.plTHB)}">${sgn(t.plTHB)} บาท (${sgn(t.plPct)}%)</span>`)}
@@ -402,12 +446,12 @@ function viewOver(){
       </div>
     </section>
     <section class="block"><h2>สัดส่วนตามลำดับความสำคัญ</h2>${prRows}</section>
-    <section class="block"><h2>กำไร/ขาดทุนรายตัว จากราคาหุ้น</h2>${plRows}</section>`;
+    <section class="block"><h2>กำไร/ขาดทุนรายตัว จากราคาหุ้น</h2>${plRows}</section></div>`;
 }
 
 function viewSet(){
   const s = S.settings;
-  return `<section class="block"><h2>ดึงราคาอัตโนมัติ</h2>
+  return `<div class="cols"><section class="block"><h2>ดึงราคาอัตโนมัติ</h2>
       <label class="field"><span>Finnhub API key</span><input id="set-key" type="password" autocomplete="off" value="${esc(s.apiKey)}" placeholder="วาง key ที่นี่"></label>
       <p class="note muted">สมัครฟรีที่ finnhub.io แล้วคัดลอก API key มาวาง key เก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่อยู่ในโค้ดของเว็บ</p>
       <div class="actions"><button class="btn primary" data-act="refresh">อัปเดตราคาตอนนี้</button></div>
@@ -434,7 +478,7 @@ function viewSet(){
     </section>
     <section class="block"><h2>รีเซ็ต</h2>
       <div class="actions" style="margin-top:0"><button class="btn danger" data-act="reset">ล้างข้อมูลทั้งหมด</button></div>
-    </section>`;
+    </section></div>`;
 }
 
 function bindSettings(){
@@ -733,7 +777,7 @@ function srHTML(z, price){
 function viewChart(){
   const h = S.holdings.find(x => x.id === chartId);
   const ranges = [['1M','1 เดือน'],['3M','3 เดือน'],['6M','6 เดือน'],['1Y','1 ปี'],['5Y','5 ปี']];
-  return `<div class="chart-top">
+  return `<div class="chart-wrap"><div class="chart-main"><div class="chart-top">
       <button class="btn" data-act="back">← พอร์ต</button>
       <select id="chartSel" aria-label="เลือกหุ้น">${S.holdings.map(x=>`<option value="${esc(x.id)}" ${x.id===chartId?'selected':''}>${esc(x.ticker)}</option>`).join('')}</select>
     </div>
@@ -745,10 +789,11 @@ function viewChart(){
       <label><input type="checkbox" id="tgSR" ${chartOpts.sr?'checked':''}> แนวรับแนวต้าน</label>
       <label><input type="checkbox" id="tgMA" ${chartOpts.ma?'checked':''}> MA50 / MA200</label>
       <label><input type="checkbox" id="tgVol" ${chartOpts.vol?'checked':''}> ปริมาณซื้อขาย</label>
-    </div>
+      ${document.fullscreenEnabled ? '<button type="button" class="btn fs-btn" data-act="fs">ดูกราฟเต็มจอ</button>' : ''}
+    </div></div><aside class="chart-side">
     <section class="block" id="srBox"><p class="muted" style="margin:0">กำลังคำนวณแนวรับแนวต้าน…</p></section>
     <p class="note muted">แนวรับแนวต้านคำนวณอัตโนมัติจากจุดกลับตัวในอดีต ตั้งค่าต่างกันจะได้ระดับต่างกัน และราคาทะลุแนวไปได้เสมอ ใช้เป็นข้อมูลประกอบ ไม่ใช่สัญญาณซื้อขาย</p>
-    <p class="note muted">กราฟโดย <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView Lightweight Charts</a> ข้อมูลราคาย้อนหลังจาก Twelve Data</p>`;
+    <p class="note muted">กราฟโดย <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView Lightweight Charts</a> ข้อมูลราคาย้อนหลังจาก Twelve Data</p></aside></div>`;
 }
 
 async function drawChart(){
@@ -942,13 +987,13 @@ async function dcaFetchMissing(){
 
 function viewDca(){
   const D = S.settings.dca;
-  return `<section class="block"><h2>DCA ประจำเดือน</h2>
+  return `<div class="dca-wrap"><aside class="dca-side"><section class="block"><h2>DCA ประจำเดือน</h2>
       <label class="field"><span>งบเดือนนี้ (บาท)</span><input id="dcaBudget" inputmode="decimal" autocomplete="off" value="${D.budget || ''}" placeholder="เช่น 5000"></label>
       <label class="field"><span>สัดส่วนแกนหลัก ETF (%)</span><input id="dcaCore" inputmode="decimal" autocomplete="off" value="${D.corePct}"></label>
       <p class="note muted" style="margin:0">แกนหลักแบ่งเท่ากันทุก ETF ส่วนที่เหลือแบ่งให้หุ้นรายตัวตามคะแนน ปรับกฎได้ในหน้าตั้งค่า</p>
-    </section>
+    </section></aside><div class="dca-main">
     <div id="dcaOut">${dcaOut()}</div>
-    <p class="note muted">คะแนนคำนวณตามกฎที่ผู้ใช้ตั้งเอง ไม่ใช่คำแนะนำการลงทุน</p>`;
+    <p class="note muted">คะแนนคำนวณตามกฎที่ผู้ใช้ตั้งเอง ไม่ใช่คำแนะนำการลงทุน</p></div></div>`;
 }
 
 const dcaGet = path => path.split('.').reduce((o, k) => o[k], S.settings.dca);
@@ -997,6 +1042,13 @@ document.addEventListener('click', e => {
     case 'chart': chartId = id; tab = 'chart'; render(); window.scrollTo(0,0); break;
     case 'back': tab = 'port'; render(); break;
     case 'range': chartRange = b.dataset.v; render(); break;
+    case 'fs': {
+      const box = $('#chartBox'), fail = () => toast('เบราว์เซอร์นี้เปิดเต็มจอไม่ได้');
+      if(document.fullscreenElement) document.exitFullscreen();
+      else if(box && box.requestFullscreen){ try{ Promise.resolve(box.requestFullscreen()).catch(fail); }catch(e){ fail(); } }
+      else fail();
+      break;
+    }
     case 'dcabuy': openBuy(id, +b.dataset.thb); break;
     case 'dcafetch': dcaFetchMissing(); break;
     case 'dcastop': if(dcaJob) dcaJob.stop = true; break;
