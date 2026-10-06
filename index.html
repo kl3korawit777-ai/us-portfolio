@@ -156,6 +156,16 @@ dialog::backdrop{background:rgba(10,15,25,.55)}
 #toast.show{opacity:1}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 .c,.thead{display:none}
+.pm-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0 4px}
+.pm-grid label{display:flex;align-items:center;gap:6px;min-height:40px;cursor:pointer}
+.pm-grid input{width:20px;height:20px;min-height:0;padding:0;margin:0;accent-color:var(--accent)}
+.cal-grid{display:block}
+.cal-m{padding:10px 0;border-top:1px solid var(--line)}
+.cal-m:first-child{border-top:0}
+.cal-m.dim{opacity:.5}
+.cal-h{display:flex;justify-content:space-between;gap:12px}
+.cal-i{display:flex;justify-content:space-between;gap:12px;font-size:.9rem}
+.cal-src{margin:12px 0 0;font-size:.85rem}
 .fs-btn{margin-left:auto;min-height:44px}
 .chart-box:fullscreen{border:0;border-radius:0;margin:0;background:var(--surface)}
 @media (min-width:960px){
@@ -186,6 +196,10 @@ dialog::backdrop{background:rgba(10,15,25,.55)}
 
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .cols>.block{margin-bottom:0}
+  .cols>.cal{grid-column:1/-1}
+  .cal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .cal-m{border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-height:84px}
+  .cal-m:first-child{border-top:1px solid var(--line)}
   .chart-box{height:min(68vh,620px)}
   @media (max-width:1199px){
     .port-wrap,.dca-wrap{grid-template-columns:280px minmax(0,1fr);gap:0 24px}
@@ -402,6 +416,45 @@ function viewPort(){
 
 const stat = (k,v) => `<div class="stat"><span class="muted">${k}</span><span>${v}</span></div>`;
 
+
+const MONTHS_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+const FREQ_N = {'1 เดือน':12, '3 เดือน':4, '6 เดือน':2, '12 เดือน':1};
+
+/* ปฏิทินปันผล: ยอดต่อปีหลังหักภาษีของแต่ละตัว (calc().divNetTHB) แบ่งตามเดือนที่ผู้ใช้เลือก
+   ปัดเป็นสตางค์แบบ largest-remainder ทั้งพอร์ต ผลรวมจึงเท่ากับกล่อง "ปันผลต่อปี" พอดี */
+function divCalendar(){
+  const [y0, m0] = todayBKK().split('-').map(Number);
+  const months = Array.from({length:12}, (_, i) => { const m = (m0 - 1 + i) % 12 + 1, y = y0 + Math.floor((m0 - 1 + i) / 12); return {m, y, items:[], sumS:0}; });
+  const payers = totals().rows.filter(({h, c}) => h.div && c.divNetTHB > 0);
+  const exact = payers.map(({c}) => c.divNetTHB * 100), fl = exact.map(Math.floor);
+  let left = Math.round(exact.reduce((a, b) => a + b, 0)) - fl.reduce((a, b) => a + b, 0);
+  exact.map((v, i) => [v - fl[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if(left > 0){ fl[i]++; left--; } });
+  const missing = [], counted = [];
+  payers.forEach(({h}, i) => {
+    const pm = [...new Set((h.payMonths || []).map(Number).filter(n => n >= 1 && n <= 12))];
+    if(!pm.length){ missing.push({h, amtS:fl[i]}); return; }
+    const slots = months.filter(x => pm.includes(x.m)), base = Math.floor(fl[i] / slots.length), rem = fl[i] - base * slots.length;
+    slots.forEach((s, k) => { const a = base + (k === slots.length - 1 ? rem : 0); s.items.push({h, amtS:a}); s.sumS += a; });
+    counted.push({h, n:pm.length});
+  });
+  return {months, missing, counted, totalS:months.reduce((a, x) => a + x.sumS, 0), missingS:missing.reduce((a, x) => a + x.amtS, 0)};
+}
+function calHTML(){
+  const d = divCalendar();
+  const grid = d.months.map(x => `<div class="cal-m ${x.items.length ? '' : 'dim'}"><div class="cal-h"><b>${MONTHS_TH[x.m-1]} ${(x.y + 543) % 100}</b><span class="${x.items.length ? '' : 'muted'}">${x.items.length ? fmt(x.sumS/100) + ' ฿' : '–'}</span></div>
+    ${x.items.map(i => `<div class="cal-i"><span>${esc(i.h.ticker)}</span><span class="muted">${fmt(i.amtS/100)}</span></div>`).join('')}</div>`).join('');
+  const warn = d.counted.filter(c => FREQ_N[c.h.freq] && FREQ_N[c.h.freq] !== c.n).map(c => `${esc(c.h.ticker)} (เลือก ${c.n} เดือน ความถี่ ${FREQ_N[c.h.freq]} ครั้ง/ปี)`);
+  return `<section class="block cal"><h2>ปฏิทินปันผล 12 เดือนข้างหน้า</h2>
+    ${stat('รวม 12 เดือน (หลังหักภาษี)', '<b>' + fmt(d.totalS/100) + ' บาท</b>')}
+    ${d.missing.length ? stat('ยังไม่นับ (ไม่มีข้อมูลเดือนที่จ่าย)', fmt(d.missingS/100) + ' บาท') : ''}
+    <div class="cal-grid">${grid}</div>
+    <p class="cal-src"><span class="muted">กรอกเอง:</span> ${d.counted.map(c => esc(c.h.ticker)).join(', ') || '–'}</p>
+    ${d.missing.length ? `<p class="cal-src loss">ไม่มีข้อมูลเดือนที่จ่าย: ${d.missing.map(m => esc(m.h.ticker)).join(', ')} <span class="muted">แก้ไขหุ้นตัวนั้นแล้วติ๊กเดือนที่จ่าย</span></p>` : ''}
+    ${warn.length ? `<p class="cal-src muted">จำนวนเดือนไม่ตรงความถี่: ${warn.join(', ')} ยอดหารตามจำนวนเดือนที่เลือก</p>` : ''}
+    <p class="note muted">ยอดเป็นการประมาณจาก yield และมูลค่าปัจจุบัน วันที่และยอดจริงขึ้นกับการประกาศของแต่ละบริษัท</p>
+  </section>`;
+}
+
 function viewOver(){
   const {rows,t} = totals();
   if(!rows.length || !t.vTHB) return '<div class="empty muted">ยังไม่มีข้อมูลให้สรุป</div>';
@@ -440,6 +493,7 @@ function viewOver(){
       ${stat('Yield ทั้งพอร์ต', fmt(yieldPct)+'%')}
       <p class="note muted">คำนวณจาก yield ที่บันทึกไว้ คูณมูลค่าปัจจุบัน ยอดจริงขึ้นกับการประกาศจ่ายของแต่ละตัว</p>
     </section>
+    ${calHTML()}
     <section class="block"><h2>สัดส่วนตามกลุ่ม</h2>
       <div class="donut-wrap">
         <div class="donut" style="background:conic-gradient(${stops})" role="img" aria-label="สัดส่วนตามกลุ่ม"></div>
@@ -521,7 +575,7 @@ const opt = (arr, cur) => arr.map(o => { const [v,l] = Array.isArray(o) ? o : [o
 
 function openForm(id){
   const h = id ? S.holdings.find(x=>x.id===id) : {ticker:'',name:'',type:'Stock',shares:0,costUSD:0,costTHB:0,price:0,
-    div:false,yield:0,freq:'3 เดือน',sector:'',industry:'',exchange:'Nasdaq',priority:0,rating:''};
+    div:false,yield:0,freq:'3 เดือน',sector:'',industry:'',exchange:'Nasdaq',priority:0,rating:'',payMonths:[]};
   if(!h) return;
   showDlg(`<div class="dlg-body"><h2>${id ? 'แก้ไข '+esc(h.ticker) : 'เพิ่มหุ้น'}</h2>
     <div class="grid2">
@@ -543,6 +597,9 @@ function openForm(id){
     </div>
     <label class="field"><span>กลุ่ม</span><select name="sector">${opt([['','ไม่ระบุ'],...SECTORS],h.sector)}</select></label>
     <label class="field"><span>อุตสาหกรรม</span><input name="industry" value="${esc(h.industry)}"></label>
+    <div class="field"><span>เดือนที่จ่ายปันผล (ติ๊กเลือก ใช้ในปฏิทินปันผล)</span>
+      <div class="pm-grid">${MONTHS_TH.map((m,i)=>`<label><input type="checkbox" name="pm" value="${i+1}" ${(h.payMonths||[]).includes(i+1)?'checked':''}> ${m}</label>`).join('')}</div>
+      <p class="note muted" id="pmWarn" style="margin:4px 0 0"></p></div>
     <p class="err loss" hidden></p>
   </div>${dlgActions(id?'บันทึกการแก้ไข':'เพิ่มหุ้น')}`,
   (fd, form) => {
@@ -554,10 +611,11 @@ function openForm(id){
       shares:num(fd.get('shares'))||0, price:num(fd.get('price'))||0,
       costUSD:num(fd.get('costUSD'))||0, costTHB:num(fd.get('costTHB'))||0,
       priority:+fd.get('priority'), rating:fd.get('rating')||'',
+      payMonths:fd.getAll('pm').map(Number).filter(n=>n>=1&&n<=12).sort((a,b)=>a-b),
       div:fd.get('div')==='1', yield:num(fd.get('yield'))||0, freq:fd.get('freq')||h.freq,
       exchange:fd.get('exchange'), sector:fd.get('sector')||'', industry:String(fd.get('industry')||'').trim()
     };
-    if(!d.div) d.yield = 0;
+    if(!d.div){ d.yield = 0; d.payMonths = h.payMonths || []; }
     if(id){
       if(d.price !== h.price){ d.priceAt = new Date().toISOString(); d.priceOk = true; d.changePct = 0; }
       Object.assign(h, d);
@@ -568,8 +626,12 @@ function openForm(id){
   },
   form => {
     const sel = form.elements.div;
-    const sync = () => { const on = sel.value==='1'; form.elements.yield.disabled = !on; form.elements.freq.disabled = !on; };
-    sel.addEventListener('change', sync); sync();
+    const sync = () => { const on = sel.value==='1'; form.elements.yield.disabled = !on; form.elements.freq.disabled = !on;
+      const boxes = [...form.querySelectorAll('input[name=pm]')]; boxes.forEach(b => b.disabled = !on);
+      const n = boxes.filter(b => b.checked).length, want = FREQ_N[form.elements.freq.value];
+      $('#pmWarn').textContent = on && n && want && n !== want ? `เลือก ${n} เดือน ไม่ตรงกับความถี่ "${form.elements.freq.value}" (${want} ครั้งต่อปี) ปฏิทินจะหารยอดตามจำนวนเดือนที่เลือก` : ''; };
+    sel.addEventListener('change', sync); form.elements.freq.addEventListener('change', sync);
+    form.querySelectorAll('input[name=pm]').forEach(b => b.addEventListener('change', sync)); sync();
   });
 }
 
