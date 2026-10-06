@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>พอร์ตหุ้นสหรัฐ</title>
+<meta name="theme-color" content="#EEF2F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1621" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF2F1; --surface:#FFFFFF; --ink:#16233B; --muted:#5B6678; --line:#D5DCDD;
+  --gain:#0F7A5A; --loss:#C23B46; --accent:#2F4FA3; --chip:#E2E8EC;
+  --font:"IBM Plex Sans Thai","Noto Sans Thai","Leelawadee UI",Tahoma,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1621; --surface:#172131; --ink:#E7ECF3; --muted:#98A3B5; --line:#2A3547;
+    --gain:#3CC79A; --loss:#F07480; --accent:#8EA8F2; --chip:#223047;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1621; --surface:#172131; --ink:#E7ECF3; --muted:#98A3B5; --line:#2A3547;
+  --gain:#3CC79A; --loss:#F07480; --accent:#8EA8F2; --chip:#223047;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.55;
+  font-variant-numeric:tabular-nums;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.gain{color:var(--gain)} .loss{color:var(--loss)} .muted{color:var(--muted)}
+
+.topbar{max-width:640px;margin:0 auto;padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.topbar h1{font-size:1.05rem;font-weight:600;margin:0}
+main{max-width:640px;margin:0 auto;padding:12px 16px calc(96px + env(safe-area-inset-bottom,0px))}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--surface);
+  border-radius:999px;padding:8px 16px;min-height:44px;cursor:pointer;font-weight:500}
+.btn.primary{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.btn.danger{color:var(--loss);border-color:var(--loss);background:transparent}
+.btn:disabled{opacity:.55;cursor:default}
+
+.hero{padding:6px 0 22px}
+.hero-label{margin:0;color:var(--muted);font-size:.9rem}
+.hero-value{margin:0 0 4px;font-size:clamp(2.4rem,11vw,3.4rem);font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.hero-value small{font-size:.38em;font-weight:500;color:var(--muted);margin-left:8px;letter-spacing:0}
+.hero-sub{margin:0;font-weight:500}
+.split{margin-top:18px}
+.split-bar{display:flex;height:14px;gap:3px}
+.split-bar span{display:block;border-radius:4px;min-width:4px}
+.split-legend{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:.88rem}
+.split-legend b{font-weight:600}
+.meta{font-size:.82rem;color:var(--muted);margin:14px 0 0}
+
+.toolbar{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;align-items:center;scrollbar-width:none}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:6px 14px;min-height:40px;white-space:nowrap;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+select,input{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  padding:10px 12px;min-height:44px;width:100%}
+input:disabled,select:disabled{opacity:.5}
+.toolbar select{width:auto;flex:none;border-radius:999px;margin-left:auto;padding:6px 12px;min-height:40px}
+
+.ledger{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:16px;border:1px solid var(--line)}
+.row+.row{border-top:1px solid var(--line)}
+.row-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 12px;width:100%;text-align:left;background:none;
+  border:0;padding:14px 16px;cursor:pointer;min-height:64px;border-radius:16px}
+.tk{font-weight:700;font-size:1.05rem;display:flex;align-items:center;gap:8px}
+.nm{color:var(--muted);font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.val{font-weight:600;text-align:right}
+.pl{text-align:right;font-size:.88rem;font-weight:500}
+.badge{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:6px;font-size:.72rem;font-weight:700;line-height:1}
+.p1{background:var(--ink);color:var(--surface)}
+.p2{border:1.5px solid var(--ink)}
+.p3{background:var(--chip);color:var(--muted)}
+.p0{border:1.5px dashed var(--muted);color:var(--muted);font-weight:500}
+.detail{padding:0 16px 16px}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin:0}
+.facts div{min-width:0}
+.facts dt{font-size:.78rem;color:var(--muted)}
+.facts dd{margin:0;font-weight:500;overflow-wrap:anywhere;font-size:.95rem}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.empty{padding:36px 16px;text-align:center}
+
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+  display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
+nav.tabs button{flex:1;max-width:214px;background:none;border:0;padding:10px 4px;min-height:56px;cursor:pointer;color:var(--muted);font-weight:500}
+nav.tabs button[aria-current="page"]{color:var(--ink);box-shadow:inset 0 3px 0 var(--accent)}
+
+.block{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+h2{font-size:1rem;margin:0 0 10px;font-weight:600}
+.stat{display:flex;justify-content:space-between;gap:12px;padding:5px 0}
+.note{font-size:.85rem;margin:10px 0 0}
+.donut-wrap{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.donut{width:136px;height:136px;border-radius:50%;flex:none;
+  -webkit-mask:radial-gradient(circle,transparent 54%,#000 55%);mask:radial-gradient(circle,transparent 54%,#000 55%)}
+.legend{list-style:none;margin:0;padding:0;flex:1;min-width:170px}
+.legend li{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:.9rem}
+.sw{width:10px;height:10px;border-radius:3px;flex:none}
+.legend .pct{margin-left:auto;font-weight:600}
+.bar-row{display:grid;grid-template-columns:84px 1fr 70px;gap:10px;align-items:center;padding:5px 0;font-size:.9rem}
+.bar-row .num{text-align:right;font-weight:500}
+.bar-track{height:10px;background:var(--chip);border-radius:5px;position:relative;overflow:hidden}
+.bar-track.div::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--muted)}
+.bar-fill{position:absolute;top:0;bottom:0;border-radius:5px}
+
+dialog{border:0;border-radius:18px;padding:0;width:min(560px,calc(100% - 24px));max-height:calc(100% - 48px);
+  background:var(--surface);color:var(--ink)}
+dialog::backdrop{background:rgba(10,15,25,.55)}
+.dlg-body{padding:18px 18px 4px}
+.field{display:block;margin-bottom:12px}
+.field>span{display:block;font-size:.85rem;color:var(--muted);margin-bottom:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.err{margin:0 0 10px;font-weight:500}
+.dlg-actions{display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--surface);
+  padding:12px 18px;border-top:1px solid var(--line)}
+
+.chart-top{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+.chart-top select{width:auto;margin-left:auto;border-radius:999px;font-weight:600}
+.chart-title{font-size:1.5rem;margin:0;line-height:1.25}
+.chart-title .muted{display:block;font-size:.85rem;font-weight:400}
+.ohlc{margin:4px 0 10px;font-size:.9rem;min-height:1.6em}
+.chart-box{height:min(60vh,380px);background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:8px}
+.chart-msg{padding:28px 16px;margin:0;text-align:center}
+.toggles{display:flex;flex-wrap:wrap;gap:0 18px;margin-bottom:12px;font-size:.9rem}
+.toggles label{display:inline-flex;align-items:center;gap:8px;min-height:44px;cursor:pointer}
+.toggles input{width:20px;height:20px;min-height:0;padding:0;margin:0;accent-color:var(--accent)}
+.sr-row{display:grid;grid-template-columns:64px 1fr;gap:0 10px;padding:8px 0;border-top:1px solid var(--line);font-size:.92rem}
+.sr-row:first-of-type{border-top:0}
+.sr-tag{font-weight:600;grid-row:span 2}
+.sr-tag.res{color:var(--loss)} .sr-tag.sup{color:var(--gain)}
+.sr-now{background:var(--chip);border-radius:8px;padding:8px 10px;margin:4px 0;border-top:0}
+.sr-now+.sr-row{border-top:0}
+#toast{position:fixed;left:50%;bottom:calc(72px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+  background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:12px;font-size:.9rem;opacity:0;
+  pointer-events:none;transition:opacity .2s;width:max-content;max-width:calc(100% - 32px);z-index:20}
+#toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>พอร์ตหุ้นสหรัฐ</h1>
+  <button class="btn" id="refreshBtn" data-act="refresh">อัปเดตราคา</button>
+</header>
+<main id="view"></main>
+<nav class="tabs" aria-label="เมนูหลัก">
+  <button data-act="tab" data-tab="port">พอร์ต</button>
+  <button data-act="tab" data-tab="over">ภาพรวม</button>
+  <button data-act="tab" data-tab="set">ตั้งค่า</button>
+</nav>
+<dialog id="dlg"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const KEY = 'usportfolio:v1';
+const SEED_AT = '2026-10-06T07:13:00+07:00';
+const SECTORS = ['Technology','Communication Services','Consumer Cyclical','Consumer Defensive','Financial',
+  'Healthcare','Industrials','Energy','Real Estate','Utilities','Basic Materials'];
+
+function mk(ticker,name,type,shares,costUSD,costTHB,price,changePct,div,yld,freq,sector,industry,exchange,priority,rating){
+  return {id:ticker,ticker,name,type,shares,costUSD,costTHB,price,changePct,priceAt:SEED_AT,priceOk:true,
+    div,yield:yld,freq,sector,industry,exchange,priority,rating};
+}
+const SEED = {
+  version:1,
+  fx:{rate:33.63, at:SEED_AT},
+  settings:{apiKey:'', tdKey:'', wht:15, fxManual:null, srN:5, srTol:2, srLook:12},
+  holdings:[]
+};
+
+const clone = o => JSON.parse(JSON.stringify(o));
+const $ = s => document.querySelector(s);
+const num = v => parseFloat(String(v ?? '').replace(/,/g,''));
+const fmt = (n,d=2) => Number(n||0).toLocaleString('th-TH',{minimumFractionDigits:d,maximumFractionDigits:d});
+const sgn = (n,d=2) => (n>0.0049?'+':n<-0.0049?'−':'') + fmt(Math.abs(n),d);
+const cls = n => n>0.0049?'gain':n<-0.0049?'loss':'muted';
+const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const when = iso => iso ? new Date(iso).toLocaleString('th-TH',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '–';
+
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(raw){ const d = JSON.parse(raw); if(d && Array.isArray(d.holdings)){ d.settings = {...SEED.settings, ...(d.settings||{})}; return d; } }
+  }catch(e){}
+  return clone(SEED);
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); }
+  catch(e){ toast('บันทึกในเครื่องไม่สำเร็จ ให้ Export ไฟล์สำรองเก็บไว้ก่อน'); }
+}
+
+let S = load();
+let tab = 'port', filter = 'all', sort = 'priority', busy = false;
+let chartId = null, chartRange = '6M', chart = null, drawToken = 0;
+const chartOpts = {ma:true, vol:true, sr:true};
+const memCache = {};
+const openIds = new Set();
+
+const fx = () => (S.settings.fxManual > 0 ? S.settings.fxManual : S.fx.rate);
+
+function calc(h){
+  const r = fx();
+  const vUSD = h.shares * h.price, vTHB = vUSD * r;
+  const plUSD = vUSD - h.costUSD;
+  const plPctUSD = h.costUSD ? plUSD / h.costUSD * 100 : 0;
+  const costTHB = h.costTHB > 0 ? h.costTHB : h.costUSD * r;
+  const stockTHB = plUSD * r;
+  const fxTHB = h.costTHB > 0 ? h.costUSD * r - h.costTHB : 0;
+  const divUSD = h.div ? vUSD * (h.yield||0) / 100 : 0;
+  const divNetTHB = divUSD * r * (1 - S.settings.wht/100);
+  return {vUSD,vTHB,plUSD,plPctUSD,costUSD:h.costUSD,costTHB,plTHB:vTHB-costTHB,stockTHB,fxTHB,divUSD,divNetTHB};
+}
+function totals(){
+  const rows = S.holdings.map(h => ({h, c:calc(h)}));
+  const t = {vUSD:0,vTHB:0,costUSD:0,costTHB:0,stockTHB:0,fxTHB:0,divUSD:0,divNetTHB:0};
+  rows.forEach(({c}) => { for(const k in t) t[k] += c[k]; });
+  t.plTHB = t.vTHB - t.costTHB;
+  t.plPct = t.costTHB ? t.plTHB / t.costTHB * 100 : 0;
+  return {rows, t};
+}
+const lastPriceAt = () => S.holdings.reduce((m,h)=> (h.priceAt && h.priceAt > m ? h.priceAt : m), '');
+
+/* ---------- views ---------- */
+function render(){
+  if(chart){ chart.remove(); chart = null; }
+  if(tab==='chart' && !S.holdings.some(x=>x.id===chartId)) tab = 'port';
+  const navTab = tab==='chart' ? 'port' : tab;
+  document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-current', b.dataset.tab===navTab ? 'page' : 'false'));
+  $('#view').innerHTML = tab==='port' ? viewPort() : tab==='over' ? viewOver() : tab==='chart' ? viewChart() : viewSet();
+  if(tab==='set') bindSettings();
+  if(tab==='chart') drawChart();
+}
+
+function hero(t){
+  const a = t.stockTHB, b = t.fxTHB, tot = Math.abs(a) + Math.abs(b);
+  const wa = tot ? Math.abs(a)/tot*100 : 50;
+  const ca = a >= 0 ? 'var(--accent)' : 'var(--loss)';
+  const cb = b >= 0 ? 'var(--accent)' : 'var(--loss)';
+  return `<section class="hero">
+    <p class="hero-label">มูลค่าพอร์ตตอนนี้</p>
+    <p class="hero-value">${fmt(t.vTHB)}<small>บาท</small></p>
+    <p class="hero-sub ${cls(t.plTHB)}">${sgn(t.plTHB)} บาท (${sgn(t.plPct)}%) <span class="muted">จากเงินต้น ${fmt(t.costTHB)} บาท</span></p>
+    ${tot ? `<div class="split" role="img" aria-label="ที่มาของกำไรขาดทุน: ราคาหุ้น ${sgn(a)} บาท, ค่าเงิน ${sgn(b)} บาท">
+      <div class="split-bar">
+        <span style="flex:0 0 calc(${wa}% - 2px);background:${ca}"></span>
+        <span style="flex:1 1 auto;background:repeating-linear-gradient(135deg,${cb} 0 4px,transparent 4px 7px);box-shadow:inset 0 0 0 1.5px ${cb}"></span>
+      </div>
+      <div class="split-legend"><span>จากราคาหุ้น <b class="${cls(a)}">${sgn(a)}</b></span><span>จากค่าเงิน <b class="${cls(b)}">${sgn(b)}</b></span></div>
+    </div>` : ''}
+    <p class="meta">1 USD = ${fmt(fx())} บาท${S.settings.fxManual>0?' (ตั้งเอง)':''}<br>ราคาล่าสุดเมื่อ ${when(lastPriceAt())}</p>
+  </section>`;
+}
+
+function badge(h){
+  if(h.priority) return `<span class="badge p${h.priority}" title="ลำดับความสำคัญ ${h.priority}">${h.priority}</span>`;
+  return `<span class="badge p0" title="ไม่จัดลำดับ">${h.type==='ETF'?'ETF':'–'}</span>`;
+}
+
+function toolbar(){
+  const f = [['all','ทั้งหมด'],['1','ลำดับ 1'],['2','ลำดับ 2'],['3','ลำดับ 3'],['etf','ETF']];
+  const s = [['priority','เรียงตามลำดับ'],['value','เรียงตามมูลค่า'],['pl','เรียงตามกำไร %']];
+  return `<div class="toolbar" role="group" aria-label="ตัวกรอง">
+    ${f.map(([k,l])=>`<button class="chip" data-act="filter" data-v="${k}" aria-pressed="${filter===k}">${l}</button>`).join('')}
+    <select id="sortSel" aria-label="เรียงตาม">${s.map(([k,l])=>`<option value="${k}" ${sort===k?'selected':''}>${l}</option>`).join('')}</select>
+  </div>`;
+}
+
+function detail(h,c,t){
+  const facts = [
+    ['จำนวนหุ้น', fmt(h.shares,7)],
+    ['ราคาล่าสุด', `${fmt(h.price)} USD <span class="${cls(h.changePct)}">${sgn(h.changePct)}%</span>${h.priceOk?'':'<br><span class="loss">ดึงราคาไม่ได้ ใช้ราคาเดิม</span>'}`],
+    ['ต้นทุนต่อหุ้น', h.shares ? fmt(h.costUSD/h.shares,4)+' USD' : '–'],
+    ['ต้นทุนรวม', `${fmt(h.costUSD)} USD<br>${h.costTHB>0 ? fmt(h.costTHB)+' บาท' : '<span class="muted">ไม่ได้ใส่ยอดบาท</span>'}`],
+    ['มูลค่าตอนนี้', `${fmt(c.vUSD)} USD<br>${fmt(c.vTHB)} บาท`],
+    ['กำไร/ขาดทุน', `<span class="${cls(c.plTHB)}">${sgn(c.plTHB)} บาท</span><br><span class="muted">หุ้น ${sgn(c.stockTHB)}, ค่าเงิน ${sgn(c.fxTHB)}</span>`],
+    ['สัดส่วนในพอร์ต', fmt(t.vTHB ? c.vTHB/t.vTHB*100 : 0, 1)+'%'],
+    ['ปันผล', h.div ? `${fmt(h.yield)}% ทุก ${esc(h.freq)}<br><span class="muted">≈ ${fmt(c.divNetTHB)} บาท/ปี หลังหักภาษี</span>` : 'ไม่จ่าย'],
+    ['กลุ่ม', esc(h.type==='ETF' ? 'ETF' : (h.sector||'–'))],
+    ['อุตสาหกรรม', esc(h.industry||'–')],
+    ['ตลาด', esc(h.exchange||'–')],
+    ['นักวิเคราะห์', esc(h.rating||'–')]
+  ];
+  return `<div class="detail">
+    <dl class="facts">${facts.map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+    <div class="actions">
+      <button class="btn primary" data-act="chart" data-id="${esc(h.id)}">ดูกราฟ</button>
+      <button class="btn" data-act="buy" data-id="${esc(h.id)}">บันทึกการซื้อ</button>
+      <button class="btn" data-act="edit" data-id="${esc(h.id)}">แก้ไข</button>
+      <button class="btn danger" data-act="del" data-id="${esc(h.id)}">ลบ</button>
+    </div>
+  </div>`;
+}
+
+function rowHTML({h,c},t){
+  const open = openIds.has(h.id);
+  return `<li class="row">
+    <button class="row-head" data-act="toggle" data-id="${esc(h.id)}" aria-expanded="${open}">
+      <span class="tk">${esc(h.ticker)} ${badge(h)}</span>
+      <span class="val">${fmt(c.vTHB)} ฿</span>
+      <span class="nm">${esc(h.name)}</span>
+      <span class="pl ${cls(c.plPctUSD)}">${sgn(c.plPctUSD)}%</span>
+    </button>
+    ${open ? detail(h,c,t) : ''}
+  </li>`;
+}
+
+function viewPort(){
+  const {rows,t} = totals();
+  if(!rows.length) return `<div class="empty"><p>ยังไม่มีหุ้นในพอร์ต เพิ่มหุ้นตัวแรก หรือ Import ไฟล์สำรองในหน้าตั้งค่า</p>
+    <button class="btn primary" data-act="add">เพิ่มหุ้น</button></div>`;
+  const list = rows.filter(({h}) => filter==='all' || (filter==='etf' ? h.type==='ETF' : h.priority===+filter));
+  const by = {
+    priority:(a,b)=>((a.h.priority||9)-(b.h.priority||9)) || (b.c.vTHB-a.c.vTHB),
+    value:(a,b)=>b.c.vTHB-a.c.vTHB,
+    pl:(a,b)=>b.c.plPctUSD-a.c.plPctUSD
+  };
+  list.sort(by[sort]);
+  return hero(t) + toolbar() +
+    `<ul class="ledger">${list.map(r=>rowHTML(r,t)).join('') || '<li class="empty muted">ไม่มีหุ้นในตัวกรองนี้</li>'}</ul>
+     <p class="note muted">% ข้างมูลค่าคือกำไรจากราคาหุ้น (USD) แตะแต่ละตัวเพื่อดูกำไรเป็นบาทแยกส่วนค่าเงิน</p>
+     <div class="actions"><button class="btn" data-act="add">+ เพิ่มหุ้น</button></div>`;
+}
+
+const stat = (k,v) => `<div class="stat"><span class="muted">${k}</span><span>${v}</span></div>`;
+
+function viewOver(){
+  const {rows,t} = totals();
+  if(!rows.length || !t.vTHB) return '<div class="empty muted">ยังไม่มีข้อมูลให้สรุป</div>';
+  const pal = ['#2F4FA3','#0F7A5A','#C98A1B','#8A4FB0','#C23B46','#3B8EA5','#6B7A8F','#A0522D'];
+  const g = {};
+  rows.forEach(({h,c}) => { const k = h.type==='ETF' ? 'ETF' : (h.sector||'ไม่ระบุ'); g[k] = (g[k]||0) + c.vTHB; });
+  const groups = Object.entries(g).sort((a,b)=>b[1]-a[1]);
+  let acc = 0;
+  const stops = groups.map(([k,v],i) => { const s = acc; acc += v/t.vTHB*100; return `${pal[i%pal.length]} ${s}% ${acc}%`; }).join(',');
+
+  const pr = {1:0,2:0,3:0,0:0};
+  rows.forEach(({h,c}) => { pr[h.priority||0] += c.vTHB; });
+  const prRows = [[1,'ลำดับ 1'],[2,'ลำดับ 2'],[3,'ลำดับ 3'],[0,'ไม่จัดลำดับ']].map(([k,l]) => {
+    const p = pr[k]/t.vTHB*100;
+    return `<div class="bar-row"><span>${l}</span><span class="bar-track"><span class="bar-fill" style="left:0;width:${p}%;background:var(--accent)"></span></span><span class="num">${fmt(p,1)}%</span></div>`;
+  }).join('');
+
+  const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r.c.plPctUSD)));
+  const plRows = [...rows].sort((a,b)=>b.c.plPctUSD-a.c.plPctUSD).map(({h,c}) => {
+    const w = Math.abs(c.plPctUSD)/maxAbs*50, pos = c.plPctUSD >= 0;
+    return `<div class="bar-row"><span>${esc(h.ticker)}</span><span class="bar-track div"><span class="bar-fill" style="${pos?'left':'right'}:50%;width:${w}%;background:var(${pos?'--gain':'--loss'})"></span></span><span class="num ${cls(c.plPctUSD)}">${sgn(c.plPctUSD)}%</span></div>`;
+  }).join('');
+
+  const yieldPct = t.vUSD ? t.divUSD/t.vUSD*100 : 0;
+  return `<section class="block"><h2>ภาพรวม</h2>
+      ${stat('มูลค่าพอร์ต', fmt(t.vTHB)+' บาท')}
+      ${stat('เงินต้น', fmt(t.costTHB)+' บาท')}
+      ${stat('กำไร/ขาดทุน', `<span class="${cls(t.plTHB)}">${sgn(t.plTHB)} บาท (${sgn(t.plPct)}%)</span>`)}
+      ${stat('จากราคาหุ้น', `<span class="${cls(t.stockTHB)}">${sgn(t.stockTHB)} บาท</span>`)}
+      ${stat('จากค่าเงิน', `<span class="${cls(t.fxTHB)}">${sgn(t.fxTHB)} บาท</span>`)}
+      ${stat('มูลค่าเป็นดอลลาร์', fmt(t.vUSD)+' USD')}
+    </section>
+    <section class="block"><h2>ปันผลต่อปีโดยประมาณ</h2>
+      ${stat('ก่อนหักภาษี', fmt(t.divUSD*fx())+' บาท')}
+      ${stat('หลังหักภาษี '+fmt(S.settings.wht,0)+'%', '<b>'+fmt(t.divNetTHB)+' บาท</b>')}
+      ${stat('Yield ทั้งพอร์ต', fmt(yieldPct)+'%')}
+      <p class="note muted">คำนวณจาก yield ที่บันทึกไว้ คูณมูลค่าปัจจุบัน ยอดจริงขึ้นกับการประกาศจ่ายของแต่ละตัว</p>
+    </section>
+    <section class="block"><h2>สัดส่วนตามกลุ่ม</h2>
+      <div class="donut-wrap">
+        <div class="donut" style="background:conic-gradient(${stops})" role="img" aria-label="สัดส่วนตามกลุ่ม"></div>
+        <ul class="legend">${groups.map(([k,v],i)=>`<li><span class="sw" style="background:${pal[i%pal.length]}"></span>${esc(k)}<span class="pct">${fmt(v/t.vTHB*100,1)}%</span></li>`).join('')}</ul>
+      </div>
+    </section>
+    <section class="block"><h2>สัดส่วนตามลำดับความสำคัญ</h2>${prRows}</section>
+    <section class="block"><h2>กำไร/ขาดทุนรายตัว จากราคาหุ้น</h2>${plRows}</section>`;
+}
+
+function viewSet(){
+  const s = S.settings;
+  return `<section class="block"><h2>ดึงราคาอัตโนมัติ</h2>
+      <label class="field"><span>Finnhub API key</span><input id="set-key" type="password" autocomplete="off" value="${esc(s.apiKey)}" placeholder="วาง key ที่นี่"></label>
+      <p class="note muted">สมัครฟรีที่ finnhub.io แล้วคัดลอก API key มาวาง key เก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่อยู่ในโค้ดของเว็บ</p>
+      <div class="actions"><button class="btn primary" data-act="refresh">อัปเดตราคาตอนนี้</button></div>
+    </section>
+    <section class="block"><h2>กราฟและแนวรับแนวต้าน</h2>
+      <label class="field"><span>Twelve Data API key (ใช้ดึงราคาย้อนหลังสำหรับกราฟ)</span><input id="set-td" type="password" autocomplete="off" value="${esc(s.tdKey)}" placeholder="วาง key ที่นี่"></label>
+      <p class="note muted" style="margin:0 0 12px">สมัครฟรีที่ twelvedata.com เว็บเก็บข้อมูลกราฟไว้ในเครื่อง และดึงใหม่วันละครั้งต่อหุ้นหนึ่งตัว จึงไม่เกินโควตาฟรี</p>
+      <div class="grid2">
+        <label class="field"><span>จำนวนวันที่ใช้ยืนยันจุดกลับตัว (น้อย = เจอแนวมากขึ้น)</span><select id="set-srn">${opt([3,4,5,7,10],s.srN)}</select></label>
+        <label class="field"><span>รวมเป็นโซนเดียวกันถ้าห่างไม่เกิน (%)</span><select id="set-srt">${opt([1,1.5,2,3],s.srTol)}</select></label>
+      </div>
+      <label class="field"><span>ช่วงข้อมูลที่ใช้คำนวณ</span><select id="set-srl">${opt([[6,'6 เดือน'],[12,'1 ปี'],[24,'2 ปี']],s.srLook)}</select></label>
+    </section>
+    <section class="block"><h2>ค่าเงินและภาษี</h2>
+      <label class="field"><span>อัตราแลกเปลี่ยนแบบตั้งเอง (เว้นว่างเพื่อใช้อัตราอัตโนมัติ ${fmt(S.fx.rate)})</span><input id="set-fx" inputmode="decimal" value="${s.fxManual>0?s.fxManual:''}" placeholder="อัตโนมัติ"></label>
+      <label class="field"><span>ภาษีหัก ณ ที่จ่ายของปันผล (%)</span><input id="set-wht" inputmode="decimal" value="${s.wht}"></label>
+    </section>
+    <section class="block"><h2>สำรองข้อมูล</h2>
+      <p class="note muted" style="margin-top:0">ข้อมูลเก็บในเบราว์เซอร์ของเครื่องนี้ ถ้าล้างข้อมูลเบราว์เซอร์จะหาย ควรสำรองไว้เป็นระยะ และใช้ไฟล์เดียวกันย้ายข้อมูลระหว่างมือถือกับคอม</p>
+      <div class="actions"><button class="btn" data-act="export">Export ไฟล์สำรอง</button><label class="btn" for="imp">Import ไฟล์สำรอง</label><input id="imp" type="file" accept="application/json,.json" hidden></div>
+    </section>
+    <section class="block"><h2>รีเซ็ต</h2>
+      <div class="actions" style="margin-top:0"><button class="btn danger" data-act="reset">ล้างข้อมูลทั้งหมด</button></div>
+    </section>`;
+}
+
+function bindSettings(){
+  const k = $('#set-key'), f = $('#set-fx'), w = $('#set-wht');
+  k.addEventListener('change', () => { S.settings.apiKey = k.value.trim(); save(); toast(S.settings.apiKey ? 'บันทึก API key แล้ว' : 'ลบ API key แล้ว'); });
+  f.addEventListener('change', () => {
+    const n = num(f.value);
+    S.settings.fxManual = n > 0 ? n : null; save();
+    toast(n > 0 ? 'ใช้อัตราแลกเปลี่ยนที่ตั้งเอง' : 'ใช้อัตราแลกเปลี่ยนอัตโนมัติ');
+  });
+  w.addEventListener('change', () => {
+    const n = num(w.value);
+    if(n >= 0 && n <= 100){ S.settings.wht = n; save(); toast('บันทึกอัตราภาษีแล้ว'); }
+    else { w.value = S.settings.wht; toast('ใส่ตัวเลขระหว่าง 0 ถึง 100'); }
+  });
+  $('#imp').addEventListener('change', e => importFile(e.target.files[0]));
+  const td = $('#set-td');
+  td.addEventListener('change', () => { S.settings.tdKey = td.value.trim(); save(); toast(S.settings.tdKey ? 'บันทึก Twelve Data key แล้ว' : 'ลบ Twelve Data key แล้ว'); });
+  [['#set-srn','srN'],['#set-srt','srTol'],['#set-srl','srLook']].forEach(([sel,k]) => {
+    const el = $(sel); el.addEventListener('change', () => { S.settings[k] = num(el.value); save(); toast('บันทึกการตั้งค่าแนวรับแนวต้านแล้ว'); });
+  });
+}
+
+/* ---------- dialogs ---------- */
+const dlg = $('#dlg');
+const dlgActions = (label='บันทึก', danger=false) =>
+  `<div class="dlg-actions"><button type="button" class="btn" data-close>ยกเลิก</button><button type="submit" class="btn ${danger?'danger':'primary'}">${label}</button></div>`;
+function showDlg(html, onSubmit, after){
+  dlg.innerHTML = `<form novalidate>${html}</form>`;
+  const form = dlg.querySelector('form');
+  form.addEventListener('submit', e => { e.preventDefault(); if(onSubmit(new FormData(form), form) !== false) dlg.close(); });
+  form.querySelector('[data-close]').addEventListener('click', () => dlg.close());
+  if(after) after(form);
+  dlg.showModal();
+}
+function showErr(form, msg){ const e = form.querySelector('.err'); e.textContent = msg; e.hidden = false; return false; }
+const opt = (arr, cur) => arr.map(o => { const [v,l] = Array.isArray(o) ? o : [o,o];
+  return `<option value="${esc(v)}" ${String(v)===String(cur)?'selected':''}>${esc(l)}</option>`; }).join('');
+
+function openForm(id){
+  const h = id ? S.holdings.find(x=>x.id===id) : {ticker:'',name:'',type:'Stock',shares:0,costUSD:0,costTHB:0,price:0,
+    div:false,yield:0,freq:'3 เดือน',sector:'',industry:'',exchange:'Nasdaq',priority:0,rating:''};
+  if(!h) return;
+  showDlg(`<div class="dlg-body"><h2>${id ? 'แก้ไข '+esc(h.ticker) : 'เพิ่มหุ้น'}</h2>
+    <div class="grid2">
+      <label class="field"><span>Ticker</span><input name="ticker" value="${esc(h.ticker)}" autocapitalize="characters" autocomplete="off"></label>
+      <label class="field"><span>ประเภท</span><select name="type">${opt([['Stock','หุ้น'],['ETF','ETF']],h.type)}</select></label>
+    </div>
+    <label class="field"><span>ชื่อบริษัทหรือกองทุน</span><input name="name" value="${esc(h.name)}"></label>
+    <div class="grid2">
+      <label class="field"><span>จำนวนหุ้น</span><input name="shares" inputmode="decimal" value="${h.shares||''}"></label>
+      <label class="field"><span>ราคาล่าสุด (USD)</span><input name="price" inputmode="decimal" value="${h.price||''}"></label>
+      <label class="field"><span>ต้นทุนรวม (USD)</span><input name="costUSD" inputmode="decimal" value="${h.costUSD||''}"></label>
+      <label class="field"><span>เงินต้น (บาท)</span><input name="costTHB" inputmode="decimal" value="${h.costTHB||''}"></label>
+      <label class="field"><span>ลำดับความสำคัญ</span><select name="priority">${opt([[1,'1 สำคัญที่สุด'],[2,'2'],[3,'3'],[0,'ไม่จัดลำดับ']],h.priority)}</select></label>
+      <label class="field"><span>นักวิเคราะห์</span><select name="rating">${opt([['','ไม่ระบุ'],'ซื้อ','แนะนำซื้อ','ถือ','ขาย'],h.rating)}</select></label>
+      <label class="field"><span>ปันผล</span><select name="div">${opt([['1','จ่าย'],['0','ไม่จ่าย']],h.div?'1':'0')}</select></label>
+      <label class="field"><span>Yield (%)</span><input name="yield" inputmode="decimal" value="${h.yield||''}"></label>
+      <label class="field"><span>จ่ายทุก</span><select name="freq">${opt(['1 เดือน','3 เดือน','6 เดือน','12 เดือน'],h.freq)}</select></label>
+      <label class="field"><span>ตลาด</span><select name="exchange">${opt(['Nasdaq','NYSE','NYSE Arca','อื่น ๆ'],h.exchange)}</select></label>
+    </div>
+    <label class="field"><span>กลุ่ม</span><select name="sector">${opt([['','ไม่ระบุ'],...SECTORS],h.sector)}</select></label>
+    <label class="field"><span>อุตสาหกรรม</span><input name="industry" value="${esc(h.industry)}"></label>
+    <p class="err loss" hidden></p>
+  </div>${dlgActions(id?'บันทึกการแก้ไข':'เพิ่มหุ้น')}`,
+  (fd, form) => {
+    const t = String(fd.get('ticker')||'').trim().toUpperCase();
+    if(!t) return showErr(form, 'ใส่ ticker ก่อนบันทึก');
+    if(S.holdings.some(x => x.ticker===t && x.id!==id)) return showErr(form, `มี ${t} อยู่ในพอร์ตแล้ว ใช้ปุ่ม "บันทึกการซื้อ" ที่ตัวเดิมแทน`);
+    const d = {
+      ticker:t, name:String(fd.get('name')||'').trim() || t, type:fd.get('type'),
+      shares:num(fd.get('shares'))||0, price:num(fd.get('price'))||0,
+      costUSD:num(fd.get('costUSD'))||0, costTHB:num(fd.get('costTHB'))||0,
+      priority:+fd.get('priority'), rating:fd.get('rating')||'',
+      div:fd.get('div')==='1', yield:num(fd.get('yield'))||0, freq:fd.get('freq')||h.freq,
+      exchange:fd.get('exchange'), sector:fd.get('sector')||'', industry:String(fd.get('industry')||'').trim()
+    };
+    if(!d.div) d.yield = 0;
+    if(id){
+      if(d.price !== h.price){ d.priceAt = new Date().toISOString(); d.priceOk = true; d.changePct = 0; }
+      Object.assign(h, d);
+    } else {
+      S.holdings.push({id:'h'+Date.now(), priceAt:new Date().toISOString(), priceOk:true, changePct:0, ...d});
+    }
+    save(); render(); toast(id ? `บันทึกการแก้ไข ${t} แล้ว` : `เพิ่ม ${t} แล้ว`);
+  },
+  form => {
+    const sel = form.elements.div;
+    const sync = () => { const on = sel.value==='1'; form.elements.yield.disabled = !on; form.elements.freq.disabled = !on; };
+    sel.addEventListener('change', sync); sync();
+  });
+}
+
+function openBuy(id){
+  const h = S.holdings.find(x=>x.id===id); if(!h) return;
+  showDlg(`<div class="dlg-body"><h2>บันทึกการซื้อ ${esc(h.ticker)}</h2>
+    <p class="note muted" style="margin:0 0 12px">ดูตัวเลขจากหน้ายืนยันคำสั่งซื้อในแอปโบรกเกอร์</p>
+    <label class="field"><span>จำนวนหุ้นที่ได้</span><input name="shares" inputmode="decimal" autocomplete="off"></label>
+    <label class="field"><span>ยอดที่จ่าย (USD)</span><input name="usd" inputmode="decimal" autocomplete="off"></label>
+    <label class="field"><span>ยอดที่จ่าย (บาท)</span><input name="thb" inputmode="decimal" autocomplete="off"></label>
+    <p class="note muted" style="margin:0 0 12px">ใส่อย่างน้อยหนึ่งยอด ถ้าใส่ยอดเดียว อีกยอดจะคำนวณด้วยอัตรา ${fmt(fx())} บาทต่อดอลลาร์</p>
+    <p class="err loss" hidden></p>
+  </div>${dlgActions('บันทึกการซื้อ')}`,
+  (fd, form) => {
+    const sh = num(fd.get('shares')), usd = num(fd.get('usd')), thb = num(fd.get('thb'));
+    if(!(sh > 0)) return showErr(form, 'ใส่จำนวนหุ้นที่ได้');
+    if(!(usd > 0) && !(thb > 0)) return showErr(form, 'ใส่ยอดที่จ่ายอย่างน้อยหนึ่งช่อง');
+    const u = usd > 0 ? usd : thb/fx(), b = thb > 0 ? thb : usd*fx();
+    h.shares += sh; h.costUSD += u; h.costTHB = (h.costTHB||0) + b;
+    save(); render(); toast(`บันทึกการซื้อ ${h.ticker} แล้ว`);
+  });
+}
+
+function openDelete(id){
+  const h = S.holdings.find(x=>x.id===id); if(!h) return;
+  showDlg(`<div class="dlg-body"><h2>ลบ ${esc(h.ticker)} ออกจากพอร์ต?</h2>
+    <p>ข้อมูลของ ${esc(h.ticker)} จะหายทั้งหมด ถ้ายังไม่ได้ Export ไฟล์สำรองไว้จะกู้คืนไม่ได้</p></div>${dlgActions('ลบ',true)}`,
+  () => { S.holdings = S.holdings.filter(x=>x.id!==id); openIds.delete(id); save(); render(); toast(`ลบ ${h.ticker} แล้ว`); });
+}
+
+function openReset(){
+  showDlg(`<div class="dlg-body"><h2>ล้างข้อมูลทั้งหมด?</h2>
+    <p>หุ้นและข้อมูลทั้งหมดในพอร์ตจะถูกลบ (API key ทั้งสองยังอยู่) ถ้ายังไม่ได้ Export ไฟล์สำรองไว้จะกู้คืนไม่ได้</p></div>${dlgActions('ล้างข้อมูล',true)}`,
+  () => { const key = S.settings.apiKey, tdk = S.settings.tdKey; S = clone(SEED); S.settings.apiKey = key; S.settings.tdKey = tdk; openIds.clear(); save(); render(); toast('รีเซ็ตข้อมูลแล้ว'); });
+}
+
+/* ---------- data in/out ---------- */
+function exportData(){
+  const data = {...S, settings:{...S.settings, apiKey:'', tdKey:''}};
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `portfolio-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast('สร้างไฟล์สำรองแล้ว (ไม่รวม API key)');
+}
+function importFile(file){
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const d = JSON.parse(r.result);
+      if(!d || !Array.isArray(d.holdings)) throw 0;
+      const key = S.settings.apiKey, tdk = S.settings.tdKey;
+      S = {version:1, fx:d.fx || S.fx, settings:{...SEED.settings, ...(d.settings||{}), apiKey:(d.settings&&d.settings.apiKey) || key, tdKey:(d.settings&&d.settings.tdKey) || tdk}, holdings:d.holdings};
+      openIds.clear(); save(); render(); toast(`นำเข้า ${d.holdings.length} รายการแล้ว`);
+    }catch(e){ toast('ไฟล์นี้ไม่ใช่ไฟล์สำรองของเว็บนี้'); }
+  };
+  r.readAsText(file);
+}
+
+/* ---------- prices ---------- */
+async function getJSON(url){ const r = await fetch(url); if(!r.ok) throw new Error(r.status); return r.json(); }
+async function refresh(){
+  if(busy) return;
+  busy = true;
+  const btn = $('#refreshBtn'); btn.disabled = true; btn.textContent = 'กำลังอัปเดต…';
+  const now = () => new Date().toISOString();
+  let fxOk = false;
+  for(const [url, pick] of [
+    ['https://api.frankfurter.app/latest?from=USD&to=THB', j => j.rates && j.rates.THB],
+    ['https://open.er-api.com/v6/latest/USD', j => j.rates && j.rates.THB]
+  ]){
+    try{ const v = pick(await getJSON(url)); if(v > 0){ S.fx = {rate:v, at:now()}; fxOk = true; break; } }catch(e){}
+  }
+  const key = S.settings.apiKey;
+  let ok = 0; const fail = [];
+  if(key){
+    await Promise.all(S.holdings.map(async h => {
+      try{
+        const j = await getJSON(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(h.ticker)}&token=${encodeURIComponent(key)}`);
+        if(j && j.c > 0){ h.price = j.c; h.changePct = j.dp ?? 0; h.priceAt = now(); h.priceOk = true; ok++; }
+        else { h.priceOk = false; fail.push(h.ticker); }
+      }catch(e){ h.priceOk = false; fail.push(h.ticker); }
+    }));
+  }
+  save(); busy = false; btn.disabled = false; btn.textContent = 'อัปเดตราคา'; render();
+  if(!key) toast((fxOk ? 'อัปเดตค่าเงินแล้ว ' : '') + 'ใส่ API key ในหน้าตั้งค่าเพื่อดึงราคาหุ้น');
+  else if(!ok) toast('ดึงราคาไม่ได้เลย ตรวจ API key หรืออินเทอร์เน็ต');
+  else if(fail.length) toast(`อัปเดต ${ok} ตัว ดึงไม่ได้: ${fail.join(', ')} (ใช้ราคาเดิม)`);
+  else toast(`อัปเดตราคาครบ ${ok} ตัว` + (fxOk ? '' : ' แต่ดึงค่าเงินไม่ได้'));
+}
+
+/* ---------- chart ---------- */
+const LIB_URL = 'https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js';
+let libPromise = null;
+function loadLib(){
+  if(window.LightweightCharts) return Promise.resolve();
+  if(!libPromise) libPromise = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = LIB_URL;
+    s.onload = res; s.onerror = () => { libPromise = null; rej(new Error('lib')); };
+    document.head.appendChild(s);
+  });
+  return libPromise;
+}
+const todayBKK = () => new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Bangkok'});
+function monthsBack(dateStr, m){ const d = new Date(dateStr+'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth()-m); return d.toISOString().slice(0,10); }
+const RANGE_M = {'1M':1,'3M':3,'6M':6,'1Y':12,'5Y':60};
+
+async function loadCandles(ticker){
+  const day = todayBKK(), ck = 'usportfolio:candles:' + ticker;
+  if(memCache[ticker] && memCache[ticker].day === day) return memCache[ticker].bars;
+  let stale = null;
+  try{
+    const c = JSON.parse(localStorage.getItem(ck) || 'null');
+    if(c && Array.isArray(c.bars)){ if(c.day === day){ memCache[ticker] = c; return c.bars; } stale = c; }
+  }catch(e){}
+  const key = S.settings.tdKey;
+  if(!key){ if(stale) return stale.bars; throw new Error('nokey'); }
+  try{
+    const j = await getJSON(`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(ticker)}&interval=1day&outputsize=1300&apikey=${encodeURIComponent(key)}`);
+    if(j.status === 'error' || !Array.isArray(j.values) || !j.values.length) throw new Error(j.message || 'ไม่พบข้อมูล');
+    const bars = j.values.map(x => ({time:String(x.datetime).slice(0,10), open:+x.open, high:+x.high, low:+x.low, close:+x.close, volume:+x.volume||0}))
+      .filter(b => b.close > 0).sort((a,b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+    const c = {day, bars}; memCache[ticker] = c;
+    try{ localStorage.setItem(ck, JSON.stringify(c)); }catch(e){}
+    return bars;
+  }catch(e){
+    if(stale){ toast('ดึงข้อมูลกราฟใหม่ไม่ได้ แสดงข้อมูลที่เก็บไว้ล่าสุด'); return stale.bars; }
+    throw e;
+  }
+}
+
+function toWeekly(bars){
+  const out = []; let cur = null, key = null;
+  for(const b of bars){
+    const d = new Date(b.time+'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - (d.getUTCDay()+6)%7);
+    const k = d.toISOString().slice(0,10);
+    if(k !== key){ cur = {...b}; out.push(cur); key = k; }
+    else { cur.high = Math.max(cur.high,b.high); cur.low = Math.min(cur.low,b.low); cur.close = b.close; cur.volume += b.volume; }
+  }
+  return out;
+}
+function sma(series, p){
+  const out = []; let sum = 0;
+  series.forEach((b,i) => { sum += b.close; if(i >= p) sum -= series[i-p].close; if(i >= p-1) out.push({time:b.time, value:sum/p}); });
+  return out;
+}
+
+/* หาแนวรับแนวต้าน: จุดกลับตัว -> รวมเป็นโซน -> ให้คะแนน -> เลือกโซนแข็งแรงที่สุดฝั่งละ 3 */
+function srZones(bars, price){
+  const s = S.settings, n = s.srN, tol = s.srTol/100;
+  const data = bars.filter(b => b.time >= monthsBack(bars[bars.length-1].time, s.srLook));
+  if(data.length < n*2 + 20) return {ok:false, reason:'ข้อมูลไม่พอคำนวณแนวรับแนวต้าน (หุ้นตัวนี้มีประวัติราคาสั้นเกินไป)'};
+  const vols = data.map(b=>b.volume).filter(v=>v>0);
+  const avgVol = vols.length ? vols.reduce((a,b)=>a+b,0)/vols.length : 0;
+  const pts = [];
+  for(let i = n; i < data.length-n; i++){
+    let hi = true, lo = true;
+    for(let j = i-n; j <= i+n && (hi||lo); j++){
+      if(j === i) continue;
+      if(data[j].high > data[i].high || (j > i && data[j].high === data[i].high)) hi = false;
+      if(data[j].low < data[i].low || (j > i && data[j].low === data[i].low)) lo = false;
+    }
+    if(hi) pts.push({p:data[i].high, i, v:data[i].volume});
+    if(lo) pts.push({p:data[i].low, i, v:data[i].volume});
+  }
+  pts.sort((a,b) => a.p - b.p);
+  const zones = []; let cur = null;
+  for(const pt of pts){
+    if(cur && (pt.p - cur.lo)/cur.lo <= tol){ cur.pts.push(pt); cur.hi = pt.p; }
+    else { cur = {lo:pt.p, hi:pt.p, pts:[pt]}; zones.push(cur); }
+  }
+  zones.forEach(z => {
+    z.touches = z.pts.length;
+    z.mid = z.pts.reduce((a,b)=>a+b.p,0) / z.touches;
+    const last = Math.max(...z.pts.map(p=>p.i));
+    const vol = z.pts.reduce((a,b)=>a+(b.v||0),0) / z.touches;
+    z.score = z.touches + 1.5*(last/data.length) + (avgVol ? 0.5*Math.min(vol/avgVol,3) : 0);
+  });
+  const sup = zones.filter(z => z.hi < price).sort((a,b)=>b.score-a.score).slice(0,3).sort((a,b)=>b.mid-a.mid);
+  const res = zones.filter(z => z.lo > price).sort((a,b)=>b.score-a.score).slice(0,3).sort((a,b)=>a.mid-b.mid);
+  if(!sup.length && !res.length) return {ok:false, reason:'หาแนวรับแนวต้านจากข้อมูลช่วงนี้ไม่ได้ ลองปรับการตั้งค่าในหน้าตั้งค่า'};
+  return {ok:true, sup, res};
+}
+
+function srHTML(z, price){
+  const s = S.settings;
+  if(!z.ok) return `<h2>แนวรับแนวต้าน</h2><p class="muted" style="margin:0">${z.reason}</p>`;
+  const range = x => x.hi - x.lo < 0.005 ? fmt(x.mid) : `${fmt(x.lo)}–${fmt(x.hi)}`;
+  const row = (x,i,type) => {
+    const d = (x.mid - price)/price*100;
+    return `<div class="sr-row"><span class="sr-tag ${type}">${type==='res'?'ต้าน':'รับ'} ${i+1}</span><span>${range(x)} USD</span>
+      <span class="muted">แตะ ${x.touches} ครั้ง, ${d>0?'สูงกว่า':'ต่ำกว่า'}ราคาปัจจุบัน ${fmt(Math.abs(d),1)}%</span></div>`;
+  };
+  return `<h2>แนวรับแนวต้าน</h2>
+    ${[...z.res].reverse().map((x,k)=>row(x, z.res.length-1-k, 'res')).join('') || '<p class="muted" style="margin:0 0 6px">ไม่พบแนวต้านเหนือราคาปัจจุบันในช่วงข้อมูลนี้</p>'}
+    <div class="sr-row sr-now"><span class="sr-tag">ตอนนี้</span><span><b>${fmt(price)} USD</b></span></div>
+    ${z.sup.map((x,i)=>row(x,i,'sup')).join('') || '<p class="muted" style="margin:6px 0 0">ไม่พบแนวรับใต้ราคาปัจจุบันในช่วงข้อมูลนี้</p>'}
+    <p class="note muted">คำนวณจากข้อมูลย้อนหลัง ${s.srLook>=12 ? (s.srLook/12)+' ปี' : s.srLook+' เดือน'} ปรับได้ในหน้าตั้งค่า</p>`;
+}
+
+function viewChart(){
+  const h = S.holdings.find(x => x.id === chartId);
+  const ranges = [['1M','1 เดือน'],['3M','3 เดือน'],['6M','6 เดือน'],['1Y','1 ปี'],['5Y','5 ปี']];
+  return `<div class="chart-top">
+      <button class="btn" data-act="back">← พอร์ต</button>
+      <select id="chartSel" aria-label="เลือกหุ้น">${S.holdings.map(x=>`<option value="${esc(x.id)}" ${x.id===chartId?'selected':''}>${esc(x.ticker)}</option>`).join('')}</select>
+    </div>
+    <h2 class="chart-title">${esc(h.ticker)}<span class="muted">${esc(h.name)}</span></h2>
+    <p class="ohlc" id="ohlc">${fmt(h.price)} USD <span class="${cls(h.changePct)}">${sgn(h.changePct)}%</span></p>
+    <div class="toolbar" role="group" aria-label="ช่วงเวลา">${ranges.map(([k,l])=>`<button class="chip" data-act="range" data-v="${k}" aria-pressed="${chartRange===k}">${l}</button>`).join('')}</div>
+    <div id="chartBox" class="chart-box"><p class="muted chart-msg">กำลังโหลดกราฟ…</p></div>
+    <div class="toggles">
+      <label><input type="checkbox" id="tgSR" ${chartOpts.sr?'checked':''}> แนวรับแนวต้าน</label>
+      <label><input type="checkbox" id="tgMA" ${chartOpts.ma?'checked':''}> MA50 / MA200</label>
+      <label><input type="checkbox" id="tgVol" ${chartOpts.vol?'checked':''}> ปริมาณซื้อขาย</label>
+    </div>
+    <section class="block" id="srBox"><p class="muted" style="margin:0">กำลังคำนวณแนวรับแนวต้าน…</p></section>
+    <p class="note muted">แนวรับแนวต้านคำนวณอัตโนมัติจากจุดกลับตัวในอดีต ตั้งค่าต่างกันจะได้ระดับต่างกัน และราคาทะลุแนวไปได้เสมอ ใช้เป็นข้อมูลประกอบ ไม่ใช่สัญญาณซื้อขาย</p>
+    <p class="note muted">กราฟโดย <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView Lightweight Charts</a> ข้อมูลราคาย้อนหลังจาก Twelve Data</p>`;
+}
+
+async function drawChart(){
+  const token = ++drawToken;
+  const h = S.holdings.find(x => x.id === chartId);
+  const box = $('#chartBox'), srBox = $('#srBox');
+  const stop = () => token !== drawToken || tab !== 'chart';
+  let bars;
+  try{ await loadLib(); }
+  catch(e){ if(stop()) return; box.innerHTML = '<p class="chart-msg loss">โหลดตัววาดกราฟไม่ได้ ตรวจการเชื่อมต่ออินเทอร์เน็ตแล้วเปิดหน้านี้ใหม่</p>'; srBox.innerHTML = ''; return; }
+  try{ bars = await loadCandles(h.ticker); }
+  catch(e){
+    if(stop()) return;
+    box.innerHTML = `<p class="chart-msg">${e.message === 'nokey'
+      ? 'ใส่ Twelve Data API key ในหน้าตั้งค่าเพื่อดูกราฟ'
+      : 'โหลดราคาย้อนหลังของ ' + esc(h.ticker) + ' ไม่ได้<br><span class="muted">' + esc(e.message) + '</span>'}</p>`;
+    srBox.innerHTML = ''; return;
+  }
+  if(stop()) return;
+
+  const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
+  const up = v('--gain'), dn = v('--loss');
+  const series = chartRange === '5Y' ? toWeekly(bars) : bars;
+  const cut = monthsBack(bars[bars.length-1].time, RANGE_M[chartRange]);
+  const vis = series.filter(b => b.time >= cut);
+  const price = h.priceOk && h.price > 0 ? h.price : bars[bars.length-1].close;
+
+  box.innerHTML = '';
+  chart = LightweightCharts.createChart(box, {
+    autoSize:true,
+    layout:{background:{type:'solid', color:v('--surface')}, textColor:v('--muted'), fontFamily:'IBM Plex Sans Thai, sans-serif'},
+    grid:{vertLines:{color:v('--chip')}, horzLines:{color:v('--chip')}},
+    rightPriceScale:{borderColor:v('--line')},
+    timeScale:{borderColor:v('--line')}
+  });
+  const cs = chart.addCandlestickSeries({upColor:up, downColor:dn, borderVisible:false, wickUpColor:up, wickDownColor:dn});
+  cs.setData(vis.map(b => ({time:b.time, open:b.open, high:b.high, low:b.low, close:b.close})));
+  cs.priceScale().applyOptions({scaleMargins:{top:0.08, bottom:chartOpts.vol ? 0.22 : 0.06}});
+
+  if(chartOpts.vol){
+    const vs = chart.addHistogramSeries({priceFormat:{type:'volume'}, priceScaleId:'', lastValueVisible:false, priceLineVisible:false});
+    vs.priceScale().applyOptions({scaleMargins:{top:0.82, bottom:0}});
+    vs.setData(vis.map(b => ({time:b.time, value:b.volume, color:(b.close >= b.open ? up : dn) + '55'})));
+  }
+  if(chartOpts.ma){
+    [[50, v('--accent')], [200, '#C98A1B']].forEach(([p,c]) => {
+      const m = sma(series, p).filter(x => x.time >= cut);
+      if(m.length){
+        const ls = chart.addLineSeries({color:c, lineWidth:2, priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false});
+        ls.setData(m);
+      }
+    });
+  }
+  const z = srZones(bars, price);
+  if(chartOpts.sr && z.ok){
+    z.sup.forEach((x,i) => cs.createPriceLine({price:x.mid, color:up, lineWidth:1, lineStyle:2, axisLabelVisible:true, title:'รับ '+(i+1)}));
+    z.res.forEach((x,i) => cs.createPriceLine({price:x.mid, color:dn, lineWidth:1, lineStyle:2, axisLabelVisible:true, title:'ต้าน '+(i+1)}));
+  }
+  chart.timeScale().fitContent();
+  srBox.innerHTML = srHTML(z, price);
+
+  const legendDefault = $('#ohlc').innerHTML;
+  const dateOf = t => typeof t === 'string' ? t : (t && t.year) ? `${t.year}-${String(t.month).padStart(2,'0')}-${String(t.day).padStart(2,'0')}` : typeof t === 'number' ? new Date(t*1000).toISOString().slice(0,10) : '';
+  chart.subscribeCrosshairMove(p => {
+    const el = $('#ohlc'); if(!el) return;
+    const d = p && p.time ? p.seriesData.get(cs) : null;
+    el.innerHTML = d ? `${dateOf(p.time)} เปิด ${fmt(d.open)} สูง ${fmt(d.high)} ต่ำ ${fmt(d.low)} ปิด ${fmt(d.close)}` : legendDefault;
+  });
+}
+
+/* ---------- events ---------- */
+let tt;
+function toast(m){ const el = $('#toast'); el.textContent = m; el.classList.add('show'); clearTimeout(tt); tt = setTimeout(()=>el.classList.remove('show'), 3400); }
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if(!b) return;
+  const id = b.dataset.id;
+  switch(b.dataset.act){
+    case 'tab': tab = b.dataset.tab; render(); window.scrollTo(0,0); break;
+    case 'toggle': openIds.has(id) ? openIds.delete(id) : openIds.add(id); render(); break;
+    case 'filter': filter = b.dataset.v; render(); break;
+    case 'add': openForm(); break;
+    case 'edit': openForm(id); break;
+    case 'buy': openBuy(id); break;
+    case 'del': openDelete(id); break;
+    case 'refresh': refresh(); break;
+    case 'export': exportData(); break;
+    case 'reset': openReset(); break;
+    case 'chart': chartId = id; tab = 'chart'; render(); window.scrollTo(0,0); break;
+    case 'back': tab = 'port'; render(); break;
+    case 'range': chartRange = b.dataset.v; render(); break;
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if(t.id === 'sortSel'){ sort = t.value; render(); }
+  else if(t.id === 'chartSel'){ chartId = t.value; render(); }
+  else if(t.id === 'tgMA'){ chartOpts.ma = t.checked; render(); }
+  else if(t.id === 'tgVol'){ chartOpts.vol = t.checked; render(); }
+  else if(t.id === 'tgSR'){ chartOpts.sr = t.checked; render(); }
+});
+
+render();
+if(S.settings.apiKey) refresh();
+</script>
+</body>
+</html>
