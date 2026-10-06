@@ -5,7 +5,7 @@ const LIB = 'https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightwei
 const SB_LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
 const FONT_CSS = 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap';
 /* คำขอเหล่านี้ต้องไปที่เครือข่ายเสมอ ห้ามแคช */
-const NO_CACHE = ['finnhub.io', 'api.twelvedata.com', 'api.frankfurter.app', 'open.er-api.com', 'supabase.co', 'supabase.in'];
+const NO_CACHE = ['finnhub.io', 'api.twelvedata.com', 'api.frankfurter.app', 'open.er-api.com', 'supabase.co', 'supabase.in', 'alphavantage.co'];
 const CACHEABLE = ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdn.jsdelivr.net'];
 
 self.addEventListener('install', e => {

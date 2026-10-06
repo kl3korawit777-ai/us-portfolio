@@ -246,7 +246,7 @@ const DCA_DEF = {budget:0, corePct:50, rules:{
 const SEED = {
   version:1,
   fx:{rate:33.63, at:SEED_AT},
-  settings:{apiKey:'', tdKey:'', wht:15, fxManual:null, srN:5, srTol:2, srLook:12, syncKeys:false, dca:DCA_DEF},
+  settings:{apiKey:'', tdKey:'', avKey:'', wht:15, fxManual:null, srN:5, srTol:2, srLook:12, syncKeys:false, dca:DCA_DEF},
   holdings:[]
 };
 
@@ -431,14 +431,69 @@ function divCalendar(){
   exact.map((v, i) => [v - fl[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if(left > 0){ fl[i]++; left--; } });
   const missing = [], counted = [];
   payers.forEach(({h}, i) => {
-    const pm = [...new Set((h.payMonths || []).map(Number).filter(n => n >= 1 && n <= 12))];
+    let pm = [...new Set((h.payMonths || []).map(Number).filter(n => n >= 1 && n <= 12))], src = 'manual';   /* ที่กรอกเองชนะ API เสมอ */
+    if(!pm.length){ const c = divCacheGet(h.ticker); if(c && c.months.length){ pm = c.months; src = 'api'; } }
     if(!pm.length){ missing.push({h, amtS:fl[i]}); return; }
     const slots = months.filter(x => pm.includes(x.m)), base = Math.floor(fl[i] / slots.length), rem = fl[i] - base * slots.length;
     slots.forEach((s, k) => { const a = base + (k === slots.length - 1 ? rem : 0); s.items.push({h, amtS:a}); s.sumS += a; });
-    counted.push({h, n:pm.length});
+    counted.push({h, n:pm.length, src});
   });
   return {months, missing, counted, totalS:months.reduce((a, x) => a + x.sumS, 0), missingS:missing.reduce((a, x) => a + x.amtS, 0)};
 }
+/* ---- เดือนที่จ่ายปันผลจากประวัติ (Alpha Vantage) เก็บแคชในเครื่อง ดึงใหม่เดือนละครั้ง ---- */
+const AV_GAP = 12;
+let divJob = null;
+function divCacheGet(tk){
+  try{ const c = JSON.parse(localStorage.getItem('usportfolio:div:' + tk) || 'null'); return c && Array.isArray(c.months) ? c : null; }catch(e){ return null; }
+}
+function divMonthsFrom(items){
+  const from = monthsBack(todayBKK(), 12), set = new Set();
+  items.forEach(x => { const d = x.pay || x.ex; if(d && d > from) set.add(+d.slice(5, 7)); });
+  return [...set].sort((a, b) => a - b);
+}
+async function avFetchDividends(tk){
+  const j = await getJSON(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${encodeURIComponent(tk)}&apikey=${encodeURIComponent(S.settings.avKey)}`);
+  if(j.Information || j.Note) throw new Error(String(j.Information || j.Note).slice(0, 160));
+  if(j['Error Message']) throw new Error('ไม่พบข้อมูลของ ' + tk);
+  if(!Array.isArray(j.data)) throw new Error('ไม่มีข้อมูลปันผล');
+  const keep = monthsBack(todayBKK(), 13), isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+  const items = j.data.map(x => ({ex:isDate(x.ex_dividend_date) ? x.ex_dividend_date : '', pay:isDate(x.payment_date) ? x.payment_date : '', amt:+x.amount || 0}))
+    .filter(x => (x.pay || x.ex) && (x.pay || x.ex) > keep);
+  const months = divMonthsFrom(items);
+  if(!months.length) throw new Error('ไม่มีปันผลใน 12 เดือนที่ผ่านมา');
+  try{ localStorage.setItem('usportfolio:div:' + tk, JSON.stringify({fetched:todayBKK().slice(0, 7), months, items})); }catch(e){}
+  return months;
+}
+function divNeed(){
+  const month = todayBKK().slice(0, 7);
+  return totals().rows.filter(({h, c}) => h.div && c.divNetTHB > 0 && !(h.payMonths || []).length)
+    .filter(({h}) => { const c = divCacheGet(h.ticker); return !c || c.fetched !== month; }).map(({h}) => h.ticker);
+}
+function divFetchBox(){
+  if(divJob) return `<p class="cal-src">กำลังดึงประวัติปันผล ${divJob.i}/${divJob.n}: <b>${esc(divJob.tk)}</b>${divJob.wait ? ` <span class="muted">(รอ ${divJob.wait} วินาที)</span>` : ''}</p>
+    <div class="actions" style="margin-top:6px"><button class="btn" data-act="divstop">หยุด</button></div>`;
+  const need = divNeed();
+  if(!need.length) return '';
+  if(!S.settings.avKey) return `<p class="cal-src muted">ใส่ Alpha Vantage key ในหน้าตั้งค่า เพื่อดึงเดือนจ่ายปันผลของ ${need.map(esc).join(', ')} อัตโนมัติ</p>`;
+  return `<div class="actions" style="margin-top:8px"><button class="btn" data-act="divfetch">ดึงเดือนจ่ายจากประวัติ (${need.length} ตัว ราว ${Math.max(0, need.length - 1) * AV_GAP} วินาที)</button></div>`;
+}
+function divPaint(){ const s = document.querySelector('section.cal'); if(s && tab === 'over') s.outerHTML = calHTML(); }
+async function divFetchMissing(){
+  if(divJob) return;
+  if(!navigator.onLine){ toast('ออฟไลน์'); return; }
+  const list = divNeed(); if(!list.length) return;
+  divJob = {i:0, n:list.length, tk:'', wait:0, stop:false};
+  const fail = []; let done = 0;
+  for(let k = 0; k < list.length && !divJob.stop; k++){
+    divJob.i = k + 1; divJob.tk = list[k]; divJob.wait = 0; divPaint();
+    try{ await avFetchDividends(list[k]); done++; }
+    catch(e){ fail.push(list[k] + ' (' + errMsg(e) + ')'); if(/rate|limit|premium|25 requests|call frequency/i.test(errMsg(e))) break; }
+    if(k < list.length - 1){ for(let w = AV_GAP; w > 0 && !divJob.stop; w--){ divJob.wait = w; divPaint(); await sleep(1000); } }
+  }
+  divJob = null; divPaint();
+  toast(fail.length ? `ดึงได้ ${done} ตัว ไม่สำเร็จ: ${fail.join('; ')}` : `ดึงเดือนจ่ายปันผลแล้ว ${done} ตัว`);
+}
+
 function calHTML(){
   const d = divCalendar();
   const grid = d.months.map(x => `<div class="cal-m ${x.items.length ? '' : 'dim'}"><div class="cal-h"><b>${MONTHS_TH[x.m-1]} ${(x.y + 543) % 100}</b><span class="${x.items.length ? '' : 'muted'}">${x.items.length ? fmt(x.sumS/100) + ' ฿' : '–'}</span></div>
@@ -448,7 +503,9 @@ function calHTML(){
     ${stat('รวม 12 เดือน (หลังหักภาษี)', '<b>' + fmt(d.totalS/100) + ' บาท</b>')}
     ${d.missing.length ? stat('ยังไม่นับ (ไม่มีข้อมูลเดือนที่จ่าย)', fmt(d.missingS/100) + ' บาท') : ''}
     <div class="cal-grid">${grid}</div>
-    <p class="cal-src"><span class="muted">กรอกเอง:</span> ${d.counted.map(c => esc(c.h.ticker)).join(', ') || '–'}</p>
+    ${divFetchBox()}
+    <p class="cal-src"><span class="muted">กรอกเอง:</span> ${d.counted.filter(c => c.src === 'manual').map(c => esc(c.h.ticker)).join(', ') || '–'}</p>
+    <p class="cal-src"><span class="muted">จากประวัติจริง (Alpha Vantage):</span> ${d.counted.filter(c => c.src === 'api').map(c => esc(c.h.ticker)).join(', ') || '–'}</p>
     ${d.missing.length ? `<p class="cal-src loss">ไม่มีข้อมูลเดือนที่จ่าย: ${d.missing.map(m => esc(m.h.ticker)).join(', ')} <span class="muted">แก้ไขหุ้นตัวนั้นแล้วติ๊กเดือนที่จ่าย</span></p>` : ''}
     ${warn.length ? `<p class="cal-src muted">จำนวนเดือนไม่ตรงความถี่: ${warn.join(', ')} ยอดหารตามจำนวนเดือนที่เลือก</p>` : ''}
     <p class="note muted">ยอดเป็นการประมาณจาก yield และมูลค่าปัจจุบัน วันที่และยอดจริงขึ้นกับการประกาศของแต่ละบริษัท</p>
@@ -520,6 +577,10 @@ function viewSet(){
       </div>
       <label class="field"><span>ช่วงข้อมูลที่ใช้คำนวณ</span><select id="set-srl">${opt([[6,'6 เดือน'],[12,'1 ปี'],[24,'2 ปี']],s.srLook)}</select></label>
     </section>
+    <section class="block"><h2>เดือนที่จ่ายปันผล</h2>
+      <label class="field"><span>Alpha Vantage API key (ใช้ดึงเดือนที่จ่ายปันผลอัตโนมัติ)</span><input id="set-av" type="password" autocomplete="off" value="${esc(s.avKey)}" placeholder="วาง key ที่นี่"></label>
+      <p class="note muted" style="margin:0">สมัครฟรีที่ alphavantage.co/support/#api-key แพ็กเกจฟรีจำกัดจำนวนครั้งต่อวัน เว็บดึงทีละตัวห่างกัน 12 วินาที เก็บผลไว้ในเครื่องและดึงใหม่เดือนละครั้ง ข้อมูลที่กรอกเองในฟอร์มหุ้นชนะข้อมูลจาก API เสมอ</p>
+    </section>
     <section class="block"><h2>ค่าเงินและภาษี</h2>
       <label class="field"><span>อัตราแลกเปลี่ยนแบบตั้งเอง (เว้นว่างเพื่อใช้อัตราอัตโนมัติ ${fmt(S.fx.rate)})</span><input id="set-fx" inputmode="decimal" value="${s.fxManual>0?s.fxManual:''}" placeholder="อัตโนมัติ"></label>
       <label class="field"><span>ภาษีหัก ณ ที่จ่ายของปันผล (%)</span><input id="set-wht" inputmode="decimal" value="${s.wht}"></label>
@@ -551,6 +612,8 @@ function bindSettings(){
   });
   $('#imp').addEventListener('change', e => importFile(e.target.files[0]));
   const td = $('#set-td');
+  const av = $('#set-av');
+  av.addEventListener('change', () => { S.settings.avKey = av.value.trim(); save(); toast(S.settings.avKey ? 'บันทึก Alpha Vantage key แล้ว' : 'ลบ Alpha Vantage key แล้ว'); });
   td.addEventListener('change', () => { S.settings.tdKey = td.value.trim(); save(); toast(S.settings.tdKey ? 'บันทึก Twelve Data key แล้ว' : 'ลบ Twelve Data key แล้ว'); });
   [['#set-srn','srN'],['#set-srt','srTol'],['#set-srl','srLook']].forEach(([sel,k]) => {
     const el = $(sel); el.addEventListener('change', () => { S.settings[k] = num(el.value); save(); toast('บันทึกการตั้งค่าแนวรับแนวต้านแล้ว'); });
@@ -663,7 +726,7 @@ function openDelete(id){
 }
 
 function resetLocal(){
-  const key = S.settings.apiKey, tdk = S.settings.tdKey; S = clone(SEED); S.settings.apiKey = key; S.settings.tdKey = tdk; openIds.clear(); save(); render(); toast('รีเซ็ตข้อมูลแล้ว');
+  const key = S.settings.apiKey, tdk = S.settings.tdKey, avk = S.settings.avKey; S = clone(SEED); S.settings.apiKey = key; S.settings.tdKey = tdk; S.settings.avKey = avk; openIds.clear(); save(); render(); toast('รีเซ็ตข้อมูลแล้ว');
 }
 function openReset(){
   if(sync.user){
@@ -680,7 +743,7 @@ function openReset(){
 
 /* ---------- data in/out ---------- */
 function exportData(){
-  const data = {...S, settings:{...S.settings, apiKey:'', tdKey:''}};
+  const data = {...S, settings:{...S.settings, apiKey:'', tdKey:'', avKey:''}};
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -694,8 +757,8 @@ function importText(text){
     try{ d = JSON.parse(text); if(!d || !Array.isArray(d.holdings)) throw 0; }
     catch(e){ toast('ข้อมูลนี้ไม่ใช่ไฟล์สำรองของเว็บนี้'); return; }
     const apply = () => {
-      const key = S.settings.apiKey, tdk = S.settings.tdKey;
-      S = {version:1, fx:d.fx || S.fx, settings:{...normSettings(d.settings), apiKey:(d.settings&&d.settings.apiKey) || key, tdKey:(d.settings&&d.settings.tdKey) || tdk}, holdings:d.holdings};
+      const key = S.settings.apiKey, tdk = S.settings.tdKey, avk = S.settings.avKey;
+      S = {version:1, fx:d.fx || S.fx, settings:{...normSettings(d.settings), apiKey:(d.settings&&d.settings.apiKey) || key, tdKey:(d.settings&&d.settings.tdKey) || tdk, avKey:(d.settings&&d.settings.avKey) || avk}, holdings:d.holdings};
       openIds.clear(); save(); render(); toast(`นำเข้า ${d.holdings.length} รายการแล้ว`);
     };
     if(sync.user) showChoice('นำเข้าไฟล์สำรอง?', `<p>นำเข้า ${d.holdings.length} รายการ ล็อกอินซิงก์อยู่ ข้อมูลที่นำเข้าจะถูกส่งไปทับข้อมูลบนเซิร์ฟเวอร์ด้วย</p>`, [['ยกเลิก', ''], ['นำเข้า', 'primary']]).then(i => { if(i === 1) apply(); });
@@ -1115,7 +1178,7 @@ function stable(o){
 }
 function fnv(s){ let h = 0x811c9dc5; for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); }
 /* settings ที่ซิงก์: ตัด API key ทั้งสองออก ยกเว้นผู้ใช้เปิดสวิตช์ "ซิงก์ API key ด้วย" (ปิดไว้เป็นค่าเริ่มต้น) */
-function cleanSettings(s){ const c = normSettings(s); if(!c.syncKeys){ delete c.apiKey; delete c.tdKey; } return c; }
+function cleanSettings(s){ const c = normSettings(s); if(!c.syncKeys){ delete c.apiKey; delete c.tdKey; delete c.avKey; } return c; }
 function hashOf(settings, holdings){
   return fnv(stable({settings:cleanSettings(settings), holdings:holdings.map(h => { const c = {...h}; VOLATILE.forEach(k => delete c[k]); return c; })}));
 }
@@ -1144,7 +1207,7 @@ function syncBoxInner(){
     <p style="margin:0 0 4px">เข้าสู่ระบบเป็น <b>${esc(sync.user.email || '')}</b></p>
     <p class="note" id="syncStatus" style="margin:0 0 4px">${esc(statusText())}</p>
     <div class="actions"><button class="btn primary" data-act="syncnow">ซิงก์ตอนนี้</button><button class="btn" data-act="syncout">ออกจากระบบ</button></div>
-    <div class="toggles" style="margin:10px 0 0"><label><input type="checkbox" id="syncKeysTg" ${S.settings.syncKeys ? 'checked' : ''}> ซิงก์ API key (Finnhub, Twelve Data) ไปกับข้อมูลด้วย</label></div>
+    <div class="toggles" style="margin:10px 0 0"><label><input type="checkbox" id="syncKeysTg" ${S.settings.syncKeys ? 'checked' : ''}> ซิงก์ API key (Finnhub, Twelve Data, Alpha Vantage) ไปกับข้อมูลด้วย</label></div>
     <p class="note muted" style="margin-top:0">${S.settings.syncKeys ? 'เปิดอยู่: key เก็บในแถวข้อมูลของคุณบน Supabase ซึ่งมี RLS กันคนอื่นอ่าน (เจ้าของโปรเจกต์ Supabase เห็นได้) ปิดสวิตช์เพื่อลบ key ออกจากเซิร์ฟเวอร์' : 'ปิดอยู่: key อยู่ในเครื่องนี้เท่านั้น ต้องใส่ทีละเครื่อง'}</p>
     <p class="note muted">ซิงก์: หุ้น อัตราแลกเปลี่ยน และการตั้งค่าทั่วไป ล็อกเอาต์แล้วข้อมูลในเครื่องยังอยู่</p>`;
   return `<h2>บัญชีและการซิงก์</h2>
@@ -1297,9 +1360,9 @@ function applyRemote(row){
     return h;
   });
   const fxNew = d.fx && d.fx.rate > 0 && (!S.fx.at || !d.fx.at || d.fx.at >= S.fx.at) ? d.fx : S.fx;
-  const key = S.settings.apiKey, tdk = S.settings.tdKey, rs = normSettings(d.settings);
+  const key = S.settings.apiKey, tdk = S.settings.tdKey, avk = S.settings.avKey, rs = normSettings(d.settings);
   const pickKey = (remote, local) => rs.syncKeys && remote ? remote : local;   /* key ฝั่งเซิร์ฟเวอร์ใช้เฉพาะเมื่อเปิดซิงก์ key และไม่ว่าง */
-  S = {version:1, fx:fxNew, settings:{...rs, apiKey:pickKey(rs.apiKey, key), tdKey:pickKey(rs.tdKey, tdk)}, holdings};
+  S = {version:1, fx:fxNew, settings:{...rs, apiKey:pickKey(rs.apiKey, key), tdKey:pickKey(rs.tdKey, tdk), avKey:pickKey(rs.avKey, avk)}, holdings};
   sync.applying = true; save(); sync.applying = false;
   saveMeta({uid:sync.user.id, base:row.updated_at, hash:contentHash(), at:nowISO()});
   openIds.clear(); render();
@@ -1412,6 +1475,8 @@ document.addEventListener('click', e => {
     case 'syncout': syncSignOut(); break;
     case 'syncpass': syncLoginPassword(); break;
     case 'synclink': syncSendLink(); break;
+    case 'divfetch': divFetchMissing(); break;
+    case 'divstop': if(divJob) divJob.stop = true; break;
     case 'dcabuy': openBuy(id, +b.dataset.thb); break;
     case 'dcafetch': dcaFetchMissing(); break;
     case 'dcastop': if(dcaJob) dcaJob.stop = true; break;
