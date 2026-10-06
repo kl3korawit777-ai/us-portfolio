@@ -246,7 +246,7 @@ const DCA_DEF = {budget:0, corePct:50, rules:{
 const SEED = {
   version:1,
   fx:{rate:33.63, at:SEED_AT},
-  settings:{apiKey:'', tdKey:'', wht:15, fxManual:null, srN:5, srTol:2, srLook:12, dca:DCA_DEF},
+  settings:{apiKey:'', tdKey:'', wht:15, fxManual:null, srN:5, srTol:2, srLook:12, syncKeys:false, dca:DCA_DEF},
   holdings:[]
 };
 
@@ -1114,8 +1114,8 @@ function stable(o){
   return JSON.stringify(o);
 }
 function fnv(s){ let h = 0x811c9dc5; for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); }
-/* settings ที่ซิงก์: ตัด API key ทั้งสองออกเสมอ ไม่ให้ไปอยู่บนเซิร์ฟเวอร์ */
-function cleanSettings(s){ const c = normSettings(s); delete c.apiKey; delete c.tdKey; return c; }
+/* settings ที่ซิงก์: ตัด API key ทั้งสองออก ยกเว้นผู้ใช้เปิดสวิตช์ "ซิงก์ API key ด้วย" (ปิดไว้เป็นค่าเริ่มต้น) */
+function cleanSettings(s){ const c = normSettings(s); if(!c.syncKeys){ delete c.apiKey; delete c.tdKey; } return c; }
 function hashOf(settings, holdings){
   return fnv(stable({settings:cleanSettings(settings), holdings:holdings.map(h => { const c = {...h}; VOLATILE.forEach(k => delete c[k]); return c; })}));
 }
@@ -1144,7 +1144,9 @@ function syncBoxInner(){
     <p style="margin:0 0 4px">เข้าสู่ระบบเป็น <b>${esc(sync.user.email || '')}</b></p>
     <p class="note" id="syncStatus" style="margin:0 0 4px">${esc(statusText())}</p>
     <div class="actions"><button class="btn primary" data-act="syncnow">ซิงก์ตอนนี้</button><button class="btn" data-act="syncout">ออกจากระบบ</button></div>
-    <p class="note muted">ซิงก์: หุ้น อัตราแลกเปลี่ยน และการตั้งค่าทั่วไป ไม่ซิงก์ API key ทั้งสอง (อยู่ในเครื่องนี้เท่านั้น) ล็อกเอาต์แล้วข้อมูลในเครื่องยังอยู่</p>`;
+    <div class="toggles" style="margin:10px 0 0"><label><input type="checkbox" id="syncKeysTg" ${S.settings.syncKeys ? 'checked' : ''}> ซิงก์ API key (Finnhub, Twelve Data) ไปกับข้อมูลด้วย</label></div>
+    <p class="note muted" style="margin-top:0">${S.settings.syncKeys ? 'เปิดอยู่: key เก็บในแถวข้อมูลของคุณบน Supabase ซึ่งมี RLS กันคนอื่นอ่าน (เจ้าของโปรเจกต์ Supabase เห็นได้) ปิดสวิตช์เพื่อลบ key ออกจากเซิร์ฟเวอร์' : 'ปิดอยู่: key อยู่ในเครื่องนี้เท่านั้น ต้องใส่ทีละเครื่อง'}</p>
+    <p class="note muted">ซิงก์: หุ้น อัตราแลกเปลี่ยน และการตั้งค่าทั่วไป ล็อกเอาต์แล้วข้อมูลในเครื่องยังอยู่</p>`;
   return `<h2>บัญชีและการซิงก์</h2>
     <p class="note muted" id="syncStatus" style="margin:0 0 12px">${esc(statusText())}</p>
     <label class="field"><span>อีเมล</span><input id="syncEmail" type="email" autocomplete="email" inputmode="email" value="${esc(sync.email)}" placeholder="you@example.com"></label>
@@ -1295,8 +1297,9 @@ function applyRemote(row){
     return h;
   });
   const fxNew = d.fx && d.fx.rate > 0 && (!S.fx.at || !d.fx.at || d.fx.at >= S.fx.at) ? d.fx : S.fx;
-  const key = S.settings.apiKey, tdk = S.settings.tdKey;
-  S = {version:1, fx:fxNew, settings:{...normSettings(d.settings), apiKey:key, tdKey:tdk}, holdings};
+  const key = S.settings.apiKey, tdk = S.settings.tdKey, rs = normSettings(d.settings);
+  const pickKey = (remote, local) => rs.syncKeys && remote ? remote : local;   /* key ฝั่งเซิร์ฟเวอร์ใช้เฉพาะเมื่อเปิดซิงก์ key และไม่ว่าง */
+  S = {version:1, fx:fxNew, settings:{...rs, apiKey:pickKey(rs.apiKey, key), tdKey:pickKey(rs.tdKey, tdk)}, holdings};
   sync.applying = true; save(); sync.applying = false;
   saveMeta({uid:sync.user.id, base:row.updated_at, hash:contentHash(), at:nowISO()});
   openIds.clear(); render();
@@ -1421,6 +1424,7 @@ document.addEventListener('change', e => {
   else if(t.id === 'tgMA'){ chartOpts.ma = t.checked; render(); }
   else if(t.id === 'tgVol'){ chartOpts.vol = t.checked; render(); }
   else if(t.id === 'tgSR'){ chartOpts.sr = t.checked; render(); }
+  else if(t.id === 'syncKeysTg'){ S.settings.syncKeys = t.checked; save(); syncPaintBox(); toast(t.checked ? 'จะซิงก์ API key ไปกับข้อมูล' : 'เลิกซิงก์ API key และลบออกจากเซิร์ฟเวอร์'); }
   else if(t.dataset.dca) setDcaRule(t);
 });
 document.addEventListener('input', e => {
