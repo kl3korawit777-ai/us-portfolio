@@ -260,6 +260,7 @@ function load(){
 function save(){
   try{ localStorage.setItem(KEY, JSON.stringify(S)); }
   catch(e){ toast('บันทึกในเครื่องไม่สำเร็จ ให้ Export ไฟล์สำรองเก็บไว้ก่อน'); }
+  syncOnSave();
 }
 
 let S = load();
@@ -451,7 +452,7 @@ function viewOver(){
 
 function viewSet(){
   const s = S.settings;
-  return `<div class="cols"><section class="block"><h2>ดึงราคาอัตโนมัติ</h2>
+  return `<div class="cols">${syncSectionHTML()}<section class="block"><h2>ดึงราคาอัตโนมัติ</h2>
       <label class="field"><span>Finnhub API key</span><input id="set-key" type="password" autocomplete="off" value="${esc(s.apiKey)}" placeholder="วาง key ที่นี่"></label>
       <p class="note muted">สมัครฟรีที่ finnhub.io แล้วคัดลอก API key มาวาง key เก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่อยู่ในโค้ดของเว็บ</p>
       <div class="actions"><button class="btn primary" data-act="refresh">อัปเดตราคาตอนนี้</button></div>
@@ -599,10 +600,20 @@ function openDelete(id){
   () => { S.holdings = S.holdings.filter(x=>x.id!==id); openIds.delete(id); save(); render(); toast(`ลบ ${h.ticker} แล้ว`); });
 }
 
+function resetLocal(){
+  const key = S.settings.apiKey, tdk = S.settings.tdKey; S = clone(SEED); S.settings.apiKey = key; S.settings.tdKey = tdk; openIds.clear(); save(); render(); toast('รีเซ็ตข้อมูลแล้ว');
+}
 function openReset(){
+  if(sync.user){
+    showChoice('ล้างข้อมูลทั้งหมด?', '<p>ล็อกอินซิงก์อยู่ เลือกว่าจะล้างที่ไหน (API key ทั้งสองยังอยู่) ถ้ายังไม่ได้ Export ไฟล์สำรองไว้จะกู้คืนไม่ได้</p><p class="note muted">"เฉพาะเครื่องนี้" จะออกจากระบบซิงก์ด้วย เพื่อไม่ให้ข้อมูลที่ว่างไปทับข้อมูลบนเซิร์ฟเวอร์</p>',
+      [['ยกเลิก', ''], ['ล้างเฉพาะเครื่องนี้', 'danger'], ['ล้างเครื่องและเซิร์ฟเวอร์', 'danger']]).then(i => {
+      if(i === 1){ const b = sync.backend; detach(); resetLocal(); toast('ล้างข้อมูลในเครื่องแล้ว ออกจากระบบซิงก์ ข้อมูลบนเซิร์ฟเวอร์ยังอยู่'); try{ if(b) b.signOut(); }catch(e){} }
+      else if(i === 2){ resetLocal(); syncNow('manual'); }
+    });
+    return;
+  }
   showDlg(`<div class="dlg-body"><h2>ล้างข้อมูลทั้งหมด?</h2>
-    <p>หุ้นและข้อมูลทั้งหมดในพอร์ตจะถูกลบ (API key ทั้งสองยังอยู่) ถ้ายังไม่ได้ Export ไฟล์สำรองไว้จะกู้คืนไม่ได้</p></div>${dlgActions('ล้างข้อมูล',true)}`,
-  () => { const key = S.settings.apiKey, tdk = S.settings.tdKey; S = clone(SEED); S.settings.apiKey = key; S.settings.tdKey = tdk; openIds.clear(); save(); render(); toast('รีเซ็ตข้อมูลแล้ว'); });
+    <p>หุ้นและข้อมูลทั้งหมดในพอร์ตจะถูกลบ (API key ทั้งสองยังอยู่) ถ้ายังไม่ได้ Export ไฟล์สำรองไว้จะกู้คืนไม่ได้</p></div>${dlgActions('ล้างข้อมูล',true)}`, resetLocal);
 }
 
 /* ---------- data in/out ---------- */
@@ -617,13 +628,16 @@ function exportData(){
   toast('สร้างไฟล์สำรองแล้ว (ไม่รวม API key)');
 }
 function importText(text){
-    try{
-      const d = JSON.parse(text);
-      if(!d || !Array.isArray(d.holdings)) throw 0;
+    let d;
+    try{ d = JSON.parse(text); if(!d || !Array.isArray(d.holdings)) throw 0; }
+    catch(e){ toast('ข้อมูลนี้ไม่ใช่ไฟล์สำรองของเว็บนี้'); return; }
+    const apply = () => {
       const key = S.settings.apiKey, tdk = S.settings.tdKey;
       S = {version:1, fx:d.fx || S.fx, settings:{...normSettings(d.settings), apiKey:(d.settings&&d.settings.apiKey) || key, tdKey:(d.settings&&d.settings.tdKey) || tdk}, holdings:d.holdings};
       openIds.clear(); save(); render(); toast(`นำเข้า ${d.holdings.length} รายการแล้ว`);
-    }catch(e){ toast('ข้อมูลนี้ไม่ใช่ไฟล์สำรองของเว็บนี้'); }
+    };
+    if(sync.user) showChoice('นำเข้าไฟล์สำรอง?', `<p>นำเข้า ${d.holdings.length} รายการ ล็อกอินซิงก์อยู่ ข้อมูลที่นำเข้าจะถูกส่งไปทับข้อมูลบนเซิร์ฟเวอร์ด้วย</p>`, [['ยกเลิก', ''], ['นำเข้า', 'primary']]).then(i => { if(i === 1) apply(); });
+    else apply();
 }
 function importFile(file){
   if(!file) return;
@@ -1020,6 +1034,286 @@ function dcaSettingsHTML(){
     </section>`;
 }
 
+/* ---------- sync (Supabase) ---------- */
+/* ใส่ Project URL และ anon key ของ Supabase ที่นี่ ทั้งสองค่าเปิดเผยได้ เพราะความปลอดภัยอยู่ที่ RLS (supabase/schema.sql)
+   ห้ามใส่ service_role key ลงในไฟล์นี้เด็ดขาด */
+const SUPABASE_URL = '';
+const SUPABASE_ANON_KEY = '';
+const SB_LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
+const SYNC_META = 'usportfolio:sync', SYNC_FLAG = 'usportfolio:syncOn';
+const VOLATILE = ['price', 'changePct', 'priceAt', 'priceOk'];
+const sync = {user:null, status:'off', msg:'', busy:false, again:false, hold:false, timer:null,
+  linkSent:false, email:'', backend:null, ready:null, applying:false, starting:false};
+const syncEnabled = () => !!(window.__SYNC_BACKEND__ || (SUPABASE_URL && SUPABASE_ANON_KEY));
+
+function stable(o){
+  if(Array.isArray(o)) return '[' + o.map(stable).join(',') + ']';
+  if(o && typeof o === 'object') return '{' + Object.keys(o).sort().filter(k => o[k] !== undefined).map(k => JSON.stringify(k) + ':' + stable(o[k])).join(',') + '}';
+  return JSON.stringify(o);
+}
+function fnv(s){ let h = 0x811c9dc5; for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); }
+/* settings ที่ซิงก์: ตัด API key ทั้งสองออกเสมอ ไม่ให้ไปอยู่บนเซิร์ฟเวอร์ */
+function cleanSettings(s){ const c = normSettings(s); delete c.apiKey; delete c.tdKey; return c; }
+function hashOf(settings, holdings){
+  return fnv(stable({settings:cleanSettings(settings), holdings:holdings.map(h => { const c = {...h}; VOLATILE.forEach(k => delete c[k]); return c; })}));
+}
+const contentHash = () => hashOf(S.settings, S.holdings);
+const syncPayload = () => ({version:1, fx:S.fx, settings:cleanSettings(S.settings), holdings:S.holdings});
+function loadMeta(){ try{ return JSON.parse(localStorage.getItem(SYNC_META) || 'null'); }catch(e){ return null; } }
+function saveMeta(m){ try{ localStorage.setItem(SYNC_META, JSON.stringify(m)); }catch(e){} }
+const nowISO = () => new Date().toISOString();
+
+function setStatus(kind, msg){ sync.status = kind; sync.msg = msg || ''; syncPaint(); }
+function statusText(){
+  if(!sync.user) return sync.starting ? 'กำลังตรวจสอบบัญชี…' : 'ยังไม่ล็อกอิน ใช้งานได้ตามปกติ ข้อมูลอยู่ในเครื่องนี้';
+  const m = loadMeta();
+  switch(sync.status){
+    case 'syncing': return 'กำลังซิงก์…';
+    case 'error': return 'ซิงก์ไม่สำเร็จ: ' + sync.msg;
+    case 'offline': return 'ออฟไลน์ ข้อมูลบันทึกในเครื่องแล้ว จะส่งขึ้นเซิร์ฟเวอร์เมื่อมีเน็ต';
+    case 'conflict': return 'ข้อมูลในเครื่องกับเซิร์ฟเวอร์ต่างกัน รอให้คุณเลือก (กด "ซิงก์ตอนนี้")';
+    case 'hold': return 'รอการตัดสินใจ (กด "ซิงก์ตอนนี้")';
+    default: return m && m.at ? 'ซิงก์ล่าสุดเมื่อ ' + when(m.at) : 'พร้อมซิงก์';
+  }
+}
+function syncPaint(){ const el = $('#syncStatus'); if(el) el.textContent = statusText(); }
+function syncBoxInner(){
+  if(sync.user) return `<h2>บัญชีและการซิงก์</h2>
+    <p style="margin:0 0 4px">เข้าสู่ระบบเป็น <b>${esc(sync.user.email || '')}</b></p>
+    <p class="note" id="syncStatus" style="margin:0 0 4px">${esc(statusText())}</p>
+    <div class="actions"><button class="btn primary" data-act="syncnow">ซิงก์ตอนนี้</button><button class="btn" data-act="syncout">ออกจากระบบ</button></div>
+    <p class="note muted">ซิงก์: หุ้น อัตราแลกเปลี่ยน และการตั้งค่าทั่วไป ไม่ซิงก์ API key ทั้งสอง (อยู่ในเครื่องนี้เท่านั้น) ล็อกเอาต์แล้วข้อมูลในเครื่องยังอยู่</p>`;
+  return `<h2>บัญชีและการซิงก์</h2>
+    <p class="note muted" id="syncStatus" style="margin:0 0 12px">${esc(statusText())}</p>
+    <label class="field"><span>อีเมล</span><input id="syncEmail" type="email" autocomplete="email" inputmode="email" value="${esc(sync.email)}" placeholder="you@example.com"></label>
+    <label class="field"><span>รหัสผ่าน (ถ้าตั้งไว้ใน Supabase)</span><input id="syncPass" type="password" autocomplete="current-password"></label>
+    <div class="actions" style="margin-top:0"><button class="btn primary" data-act="syncpass">เข้าสู่ระบบด้วยรหัสผ่าน</button><button class="btn" data-act="synclink">ส่งลิงก์ทางอีเมล</button></div>
+    ${sync.linkSent ? '<p class="note">ส่งลิงก์แล้ว เปิดอีเมลบนเครื่องนี้แล้วกดลิงก์ (บน iPhone ที่เพิ่มแอปลงหน้าจอหลัก ลิงก์จะเปิดใน Safari ให้ใช้รหัสผ่านแทน)</p>' : ''}
+    <p class="note muted">ไม่ล็อกอินก็ใช้งานได้ครบ ล็อกอินเพื่อซิงก์ข้อมูลระหว่างมือถือกับคอม</p>`;
+}
+function syncSectionHTML(){
+  if(!syncEnabled()) return `<section class="block"><h2>บัญชีและการซิงก์</h2><p class="note muted" style="margin:0">ยังไม่ได้ตั้งค่า Supabase ในโค้ด (ดู supabase/SETUP.md)</p></section>`;
+  return `<section class="block" id="syncBox">${syncBoxInner()}</section>`;
+}
+function syncPaintBox(){ const b = $('#syncBox'); if(b && tab === 'set') b.innerHTML = syncBoxInner(); }
+
+/* ---- backend จริง (supabase-js) ---- */
+function loadScript(src){
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('โหลดไลบรารีซิงก์ไม่ได้')); document.head.appendChild(s); });
+}
+function makeSupabaseBackend(){
+  let client = null;
+  const pick = s => s && s.user ? {id:s.user.id, email:s.user.email} : null;
+  const chk = ({data, error}) => { if(error) throw error; return data; };
+  return {
+    async init(onAuth){
+      if(!window.supabase) await loadScript(SB_LIB);
+      client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true, storageKey:'usportfolio:sb-auth'}});
+      client.auth.onAuthStateChange((ev, session) => onAuth(ev, pick(session)));
+      return pick(chk(await client.auth.getSession()).session);
+    },
+    async sendLink(email){ chk(await client.auth.signInWithOtp({email, options:{emailRedirectTo:location.origin + location.pathname}})); },
+    async signInPassword(email, password){ return pick(chk(await client.auth.signInWithPassword({email, password})).session); },
+    async signOut(){ await client.auth.signOut(); },
+    async fetchRow(uid){ return chk(await client.from('portfolios').select('data,updated_at').eq('user_id', uid).maybeSingle()); },
+    async insertRow(uid, data){ return chk(await client.from('portfolios').insert({user_id:uid, data}).select('updated_at').single()).updated_at; },
+    async updateRow(uid, data, expectedAt){
+      const rows = chk(await client.from('portfolios').update({data}).eq('user_id', uid).eq('updated_at', expectedAt).select('updated_at'));
+      return rows && rows.length ? rows[0].updated_at : null;   /* null = เซิร์ฟเวอร์ถูกแก้ไปแล้ว */
+    }
+  };
+}
+/* window.__SYNC_BACKEND__ ใช้เฉพาะตอนทดสอบด้วย backend จำลอง */
+async function ensureBackend(){
+  if(sync.backend) return sync.backend;
+  if(!sync.ready) sync.ready = (async () => {
+    const b = window.__SYNC_BACKEND__ || makeSupabaseBackend();
+    const u = await b.init(onAuth);
+    sync.backend = b; if(u) sync.user = u;
+  })().catch(e => { sync.ready = null; throw e; });
+  await sync.ready; return sync.backend;
+}
+function onAuth(ev, user){
+  setTimeout(() => {
+    if(user){
+      const changed = !sync.user || sync.user.id !== user.id;
+      sync.user = user;
+      try{ localStorage.setItem(SYNC_FLAG, '1'); }catch(e){}
+      if(changed){ sync.linkSent = false; syncPaintBox(); }
+      syncNow(changed ? 'login' : 'auth');
+    } else if(ev === 'SIGNED_OUT' && sync.user) detach();
+  }, 0);
+}
+function detach(){
+  sync.user = null; sync.hold = false; sync.busy = false; clearTimeout(sync.timer);
+  try{ localStorage.removeItem(SYNC_META); localStorage.removeItem(SYNC_FLAG); }catch(e){}
+  setStatus('off'); syncPaintBox();
+}
+async function syncInit(){
+  if(!syncEnabled()) return;
+  const want = localStorage.getItem(SYNC_FLAG) === '1' || /access_token|error_code|type=(magiclink|signup|recovery)/.test(location.hash);
+  if(!want) return;
+  sync.starting = true; syncPaint();
+  try{ await ensureBackend(); }catch(e){ sync.starting = false; setStatus('error', navigator.onLine ? errMsg(e) : 'ออฟไลน์ ยังโหลดระบบซิงก์ไม่ได้'); syncPaintBox(); return; }
+  sync.starting = false;
+  if(sync.user){ syncPaintBox(); syncNow('startup'); } else { try{ localStorage.removeItem(SYNC_FLAG); }catch(e){} syncPaintBox(); }
+}
+const errMsg = e => (e && (e.message || e.error_description)) ? String(e.message || e.error_description) : 'ไม่ทราบสาเหตุ';
+
+/* ---- ตรรกะซิงก์ ---- */
+function syncOnSave(){
+  if(sync.applying || !sync.user || sync.hold) return;
+  const m = loadMeta();
+  if(m && m.uid === sync.user.id && m.hash === contentHash()) return;    /* แก้แค่ราคา ไม่ต้องซิงก์ */
+  syncSchedule(2000);
+}
+function syncSchedule(ms){ clearTimeout(sync.timer); sync.timer = setTimeout(() => syncNow('edit'), ms); }
+
+async function syncNow(reason){
+  if(!sync.user || !sync.backend) return;
+  if(reason === 'manual') sync.hold = false;
+  if(sync.busy){ sync.again = true; return; }
+  if(sync.hold) return;
+  if(!navigator.onLine){ setStatus('offline'); return; }
+  sync.busy = true; setStatus('syncing');
+  try{
+    let r = 'retry', n = 0;
+    while(r === 'retry' && n++ < 3) r = await syncOnce();
+    if(r === 'retry') setStatus('error', 'เซิร์ฟเวอร์ถูกแก้ไขซ้ำ ลองใหม่อีกครั้ง');
+  }catch(e){ setStatus('error', navigator.onLine ? errMsg(e) : 'ออฟไลน์'); if(!navigator.onLine) setStatus('offline'); }
+  finally{ sync.busy = false; if(sync.again){ sync.again = false; syncSchedule(300); } }
+}
+const rowHas = row => !!(row && row.data && Array.isArray(row.data.holdings) && row.data.holdings.length);
+function okDone(){ setStatus('ok'); return 'ok'; }
+
+async function syncOnce(){
+  const uid = sync.user.id, row = await sync.backend.fetchRow(uid);
+  const remoteHas = rowHas(row), localHas = S.holdings.length > 0;
+  let meta = loadMeta(); if(meta && meta.uid !== uid) meta = null;
+  const hash = contentHash(), remoteAt = row ? row.updated_at : null;
+
+  if(!meta){                                  /* ครั้งแรกบนเครื่องนี้ หรือสลับบัญชี */
+    if(!remoteHas && !localHas){ saveMeta({uid, base:remoteAt, hash, at:nowISO()}); return okDone(); }
+    if(remoteHas && !localHas){ applyRemote(row); return okDone(); }
+    if(!remoteHas && localHas){
+      const c = await askUpload();
+      if(c !== 0){ sync.hold = true; setStatus('hold'); return 'held'; }
+      return push(row);
+    }
+    if(hashOf(row.data.settings || {}, row.data.holdings) === hash){ saveMeta({uid, base:remoteAt, hash, at:nowISO()}); return okDone(); }
+    return resolveConflict(row);
+  }
+  if(!row){ saveMeta({uid, base:null, hash:'', at:meta.at}); return push(null); }   /* แถวหาย ให้อัปโหลดใหม่ ไม่ลบข้อมูลในเครื่อง */
+  const serverChanged = remoteAt !== meta.base, dirty = hash !== meta.hash;
+  if(!serverChanged && !dirty){ saveMeta({...meta, at:nowISO()}); return okDone(); }
+  if(!serverChanged) return push(row);
+  if(!dirty){ applyRemote(row); return okDone(); }
+  return resolveConflict(row);
+}
+
+async function push(row){
+  const uid = sync.user.id, hash = contentHash(), payload = syncPayload();   /* คำนวณพร้อมกันเพื่อให้ตรงกัน */
+  let at;
+  if(!row){
+    try{ at = await sync.backend.insertRow(uid, payload); }
+    catch(e){ if(e && (e.code === '23505' || /duplicate key/i.test(e.message || ''))) return 'retry'; throw e; }
+  } else {
+    at = await sync.backend.updateRow(uid, payload, row.updated_at);
+    if(at == null) return 'retry';             /* มีคนแก้ระหว่างนั้น กลับไปตรวจใหม่ ไม่ทับ */
+  }
+  saveMeta({uid, base:at, hash, at:nowISO()});
+  return okDone();
+}
+
+function applyRemote(row){
+  const d = row.data, byId = {}; S.holdings.forEach(h => byId[h.id] = h);
+  const holdings = d.holdings.map(h => {            /* เก็บราคาที่ใหม่กว่าของแต่ละฝั่งไว้ */
+    const l = byId[h.id];
+    if(l && l.priceAt && (!h.priceAt || l.priceAt > h.priceAt)) VOLATILE.forEach(k => { if(k in l) h[k] = l[k]; });
+    return h;
+  });
+  const fxNew = d.fx && d.fx.rate > 0 && (!S.fx.at || !d.fx.at || d.fx.at >= S.fx.at) ? d.fx : S.fx;
+  const key = S.settings.apiKey, tdk = S.settings.tdKey;
+  S = {version:1, fx:fxNew, settings:{...normSettings(d.settings), apiKey:key, tdKey:tdk}, holdings};
+  sync.applying = true; save(); sync.applying = false;
+  saveMeta({uid:sync.user.id, base:row.updated_at, hash:contentHash(), at:nowISO()});
+  openIds.clear(); render();
+  toast('อัปเดตข้อมูลจากเซิร์ฟเวอร์แล้ว');
+}
+
+function statsOf(holdings, rate){
+  let sh = 0, val = 0;
+  holdings.forEach(h => { sh += +h.shares || 0; val += (+h.shares || 0) * (+h.price || 0) * rate; });
+  return {n:holdings.length, sh, val};
+}
+function showChoice(title, body, choices){
+  return new Promise(res => {
+    dlg.innerHTML = `<form method="dialog" novalidate><div class="dlg-body"><h2>${title}</h2>${body}</div>
+      <div class="dlg-actions" style="flex-wrap:wrap">${choices.map(([l, c], i) => `<button type="button" class="btn ${c}" data-ch="${i}">${l}</button>`).join('')}</div></form>`;
+    let done = false;
+    const fin = i => { if(done) return; done = true; dlg.removeEventListener('close', onClose); if(dlg.open) dlg.close(); res(i); };
+    const onClose = () => fin(-1);
+    dlg.addEventListener('close', onClose);
+    dlg.querySelectorAll('[data-ch]').forEach(b => b.addEventListener('click', () => fin(+b.dataset.ch)));
+    dlg.showModal();
+  });
+}
+/* ถ้ามีหน้าต่างอื่นเปิดอยู่ ไม่แทรก ให้รอปิดก่อนแล้วค่อยถาม */
+function dialogBusy(){
+  if(!dlg.open) return false;
+  sync.hold = true; setStatus('conflict');
+  dlg.addEventListener('close', () => syncNow('manual'), {once:true});
+  return true;
+}
+async function askUpload(){
+  if(dialogBusy()) return -1;
+  const n = S.holdings.length;
+  return showChoice('อัปโหลดข้อมูลขึ้นเซิร์ฟเวอร์?', `<p>บัญชีนี้ยังไม่มีข้อมูลบนเซิร์ฟเวอร์ แต่เครื่องนี้มีหุ้น ${n} รายการ อัปโหลดข้อมูลในเครื่องนี้ขึ้นไปไหม (API key จะไม่ถูกอัปโหลด)</p>`,
+    [['ยังไม่ทำ', ''], ['อัปโหลด', 'primary']]).then(i => i === 1 ? 0 : -1);
+}
+async function resolveConflict(row){
+  if(dialogBusy()) return 'held';
+  const a = statsOf(S.holdings, fx()), b = statsOf(row.data.holdings, (row.data.fx && row.data.fx.rate) || fx());
+  const tr = (k, x, y) => `<div class="stat"><span class="muted">${k}</span><span>${x}</span><span>${y}</span></div>`;
+  const i = await showChoice('ข้อมูลสองฝั่งต่างกัน', `<p>มีการแก้ไขทั้งในเครื่องนี้และบนเซิร์ฟเวอร์ (บนเซิร์ฟเวอร์อัปเดตล่าสุด ${when(row.updated_at)}) เลือกว่าจะเก็บฝั่งไหน อีกฝั่งจะถูกทับ</p>
+    <div class="stat"><span></span><b>เครื่องนี้</b><b>เซิร์ฟเวอร์</b></div>
+    ${tr('จำนวนรายการ', a.n, b.n)}${tr('จำนวนหุ้นรวม', fmt(a.sh, 4), fmt(b.sh, 4))}${tr('มูลค่ารวม (บาท)', fmt(a.val), fmt(b.val))}`,
+    [['ตัดสินใจทีหลัง', ''], ['เก็บของเครื่องนี้', 'danger'], ['เก็บของเซิร์ฟเวอร์', 'danger']]);
+  if(i === 2){ applyRemote(row); return okDone(); }
+  if(i === 1){ saveMeta({uid:sync.user.id, base:row.updated_at, hash:'', at:nowISO()}); return push(row); }
+  sync.hold = true; setStatus('conflict'); return 'held';
+}
+
+async function syncLoginPassword(){
+  const email = ($('#syncEmail') || {}).value.trim(), pass = ($('#syncPass') || {}).value;
+  if(!email || !pass){ toast('ใส่อีเมลและรหัสผ่านก่อน'); return; }
+  sync.email = email;
+  try{
+    await ensureBackend();
+    const u = await sync.backend.signInPassword(email, pass);
+    if(u) onAuth('SIGNED_IN', u);
+    toast('เข้าสู่ระบบแล้ว');
+  }catch(e){ toast('เข้าสู่ระบบไม่สำเร็จ: ' + errMsg(e)); }
+}
+async function syncSendLink(){
+  const email = ($('#syncEmail') || {}).value.trim();
+  if(!/^\S+@\S+\.\S+$/.test(email)){ toast('ใส่อีเมลให้ถูกต้อง'); return; }
+  sync.email = email;
+  try{
+    await ensureBackend();
+    try{ localStorage.setItem(SYNC_FLAG, '1'); }catch(e){}
+    await sync.backend.sendLink(email);
+    sync.linkSent = true; syncPaintBox(); toast('ส่งลิงก์ไปที่อีเมลแล้ว');
+  }catch(e){ toast('ส่งลิงก์ไม่สำเร็จ: ' + errMsg(e)); }
+}
+async function syncSignOut(){
+  const b = sync.backend; detach();
+  try{ if(b) await b.signOut(); }catch(e){}
+  toast('ออกจากระบบแล้ว ข้อมูลในเครื่องยังอยู่');
+}
+document.addEventListener('visibilitychange', () => { if(!document.hidden) syncNow('focus'); });
+window.addEventListener('online', () => syncNow('online'));
+
 /* ---------- events ---------- */
 let tt;
 function toast(m){ const el = $('#toast'); el.textContent = m; el.classList.add('show'); clearTimeout(tt); tt = setTimeout(()=>el.classList.remove('show'), 3400); }
@@ -1049,6 +1343,10 @@ document.addEventListener('click', e => {
       else fail();
       break;
     }
+    case 'syncnow': syncNow('manual'); break;
+    case 'syncout': syncSignOut(); break;
+    case 'syncpass': syncLoginPassword(); break;
+    case 'synclink': syncSendLink(); break;
     case 'dcabuy': openBuy(id, +b.dataset.thb); break;
     case 'dcafetch': dcaFetchMissing(); break;
     case 'dcastop': if(dcaJob) dcaJob.stop = true; break;
@@ -1080,6 +1378,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol))
 
 render();
 if(S.settings.apiKey) refresh();
+syncInit();
 </script>
 </body>
 </html>
