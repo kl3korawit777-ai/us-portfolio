@@ -1,4 +1,4 @@
-const VER = 'v2';
+const VER = 'v3';
 const SHELL = 'shell-' + VER, RT = 'rt-' + VER;
 const PRE = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 const LIB = 'https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js';

@@ -154,7 +154,11 @@ dialog::backdrop{background:rgba(10,15,25,.55)}
   background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:12px;font-size:.9rem;opacity:0;
   pointer-events:none;transition:opacity .2s;width:max-content;max-width:calc(100% - 32px);z-index:20}
 #toast.show{opacity:1}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.fxb{display:inline-block;white-space:nowrap;font-size:.72rem;padding:1px 7px;border-radius:999px;border:1px solid var(--line,currentColor);vertical-align:1px}
+.fxb.live{color:var(--accent);border-color:var(--accent)}
+@keyframes fxflash{from{background:color-mix(in srgb,var(--accent) 30%,transparent)}to{background:transparent}}
+.flash{animation:fxflash 1.2s ease-out}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .c,.thead{display:none}
 .pm-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0 4px}
 .pm-grid label{display:flex;align-items:center;gap:6px;min-height:40px;cursor:pointer}
@@ -246,7 +250,7 @@ const DCA_DEF = {budget:0, corePct:50, rules:{
 const SEED = {
   version:1,
   fx:{rate:33.63, at:SEED_AT},
-  settings:{apiKey:'', tdKey:'', avKey:'', wht:15, fxManual:null, srN:5, srTol:2, srLook:12, syncKeys:false, dca:DCA_DEF},
+  settings:{apiKey:'', tdKey:'', avKey:'', wht:15, fxManual:null, fxSpread:0, srN:5, srTol:2, srLook:12, syncKeys:false, dca:DCA_DEF},
   holdings:[]
 };
 
@@ -336,7 +340,8 @@ function hero(t){
       </div>
       <div class="split-legend"><span>จากราคาหุ้น <b class="${cls(a)}">${sgn(a)}</b></span><span>จากค่าเงิน <b class="${cls(b)}">${sgn(b)}</b></span></div>
     </div>` : ''}
-    <p class="meta">1 USD = ${fmt(fx())} บาท${S.settings.fxManual>0?' (ตั้งเอง)':''}<br>ราคาล่าสุดเมื่อ ${when(lastPriceAt())}</p>
+    <p class="meta"><span id="fxLine">${fxInner()}</span><br>ราคาล่าสุดเมื่อ ${when(lastPriceAt())}</p>
+    ${S.settings.fxSpread > 0 ? `<p class="meta" style="margin-top:4px">ถ้าขายและแลกกลับตอนนี้ ≈ ${fmt(t.vUSD * Math.max(0, fx() - S.settings.fxSpread))} บาท</p>` : ''}
   </section>`;
 }
 
@@ -582,7 +587,9 @@ function viewSet(){
       <p class="note muted" style="margin:0">สมัครฟรีที่ alphavantage.co/support/#api-key แพ็กเกจฟรีจำกัดจำนวนครั้งต่อวัน เว็บดึงทีละตัวห่างกัน 12 วินาที เก็บผลไว้ในเครื่องและดึงใหม่เดือนละครั้ง ข้อมูลที่กรอกเองในฟอร์มหุ้นชนะข้อมูลจาก API เสมอ</p>
     </section>
     <section class="block"><h2>ค่าเงินและภาษี</h2>
-      <label class="field"><span>อัตราแลกเปลี่ยนแบบตั้งเอง (เว้นว่างเพื่อใช้อัตราอัตโนมัติ ${fmt(S.fx.rate)})</span><input id="set-fx" inputmode="decimal" value="${s.fxManual>0?s.fxManual:''}" placeholder="อัตโนมัติ"></label>
+      <label class="field"><span>อัตราแลกเปลี่ยนแบบตั้งเอง (เว้นว่างเพื่อใช้อัตราอัตโนมัติ <span id="fxAutoLbl">${fmt(S.fx.rate)}</span>)</span><input id="set-fx" inputmode="decimal" value="${s.fxManual>0?s.fxManual:''}" placeholder="อัตโนมัติ"></label>
+      <label class="field"><span>ส่วนต่างอัตราแลกเปลี่ยนของโบรกเกอร์ (บาทต่อ USD)</span><input id="set-fxs" inputmode="decimal" value="${s.fxSpread>0?s.fxSpread:''}" placeholder="0"></label>
+      <p class="note muted" style="margin:0 0 12px">ถ้าใส่ค่า หน้าแรกจะแสดงมูลค่าโดยประมาณถ้าขายและแลกกลับ ตัวเลขหลักยังใช้อัตราตลาด ค่าเงินอัปเดตระหว่างวันจาก Twelve Data (ต้องมี key) เฉพาะเมื่อตลาดค่าเงินเปิด ถ้าตั้งอัตราเองจะไม่ดึงอัตโนมัติ</p>
       <label class="field"><span>ภาษีหัก ณ ที่จ่ายของปันผล (%)</span><input id="set-wht" inputmode="decimal" value="${s.wht}"></label>
     </section>
     ${dcaSettingsHTML()}
@@ -602,8 +609,14 @@ function bindSettings(){
   k.addEventListener('change', () => { S.settings.apiKey = k.value.trim(); save(); toast(S.settings.apiKey ? 'บันทึก API key แล้ว' : 'ลบ API key แล้ว'); });
   f.addEventListener('change', () => {
     const n = num(f.value);
-    S.settings.fxManual = n > 0 ? n : null; save();
+    S.settings.fxManual = n > 0 ? n : null; save(); fxStart();
     toast(n > 0 ? 'ใช้อัตราแลกเปลี่ยนที่ตั้งเอง' : 'ใช้อัตราแลกเปลี่ยนอัตโนมัติ');
+  });
+  const fs = $('#set-fxs');
+  fs.addEventListener('change', () => {
+    const n = fs.value.trim() === '' ? 0 : num(fs.value);
+    if(n >= 0 && n < 5){ S.settings.fxSpread = n; save(); toast(n > 0 ? 'บันทึกส่วนต่างโบรกเกอร์แล้ว' : 'ปิดการแสดงส่วนต่างโบรกเกอร์'); }
+    else { fs.value = S.settings.fxSpread > 0 ? S.settings.fxSpread : ''; toast('ใส่ตัวเลขระหว่าง 0 ถึง 5'); }
   });
   w.addEventListener('change', () => {
     const n = num(w.value);
@@ -773,19 +786,14 @@ function importFile(file){
 
 /* ---------- prices ---------- */
 async function getJSON(url){ const r = await fetch(url); if(!r.ok) throw new Error(r.status); return r.json(); }
-async function refresh(){
+async function refresh(fromUser){
   if(busy) return;
   if(!navigator.onLine){ updateOffline(); toast('ออฟไลน์ ใช้ราคาล่าสุดที่บันทึกไว้'); return; }
   busy = true;
   const btn = $('#refreshBtn'); btn.disabled = true; btn.textContent = 'กำลังอัปเดต…';
   const now = () => new Date().toISOString();
-  let fxOk = false;
-  for(const [url, pick] of [
-    ['https://api.frankfurter.app/latest?from=USD&to=THB', j => j.rates && j.rates.THB],
-    ['https://open.er-api.com/v6/latest/USD', j => j.rates && j.rates.THB]
-  ]){
-    try{ const v = pick(await getJSON(url)); if(v > 0){ S.fx = {rate:v, at:now()}; fxOk = true; break; } }catch(e){}
-  }
+  const fxManual = S.settings.fxManual > 0;
+  const fxOk = fromUser && !fxManual ? await fxFetch(true) : false;
   const key = S.settings.apiKey;
   let ok = 0; const fail = [];
   if(key){
@@ -801,7 +809,137 @@ async function refresh(){
   if(!key) toast((fxOk ? 'อัปเดตค่าเงินแล้ว ' : '') + 'ใส่ API key ในหน้าตั้งค่าเพื่อดึงราคาหุ้น');
   else if(!ok) toast('ดึงราคาไม่ได้เลย ตรวจ API key หรืออินเทอร์เน็ต');
   else if(fail.length) toast(`อัปเดต ${ok} ตัว ดึงไม่ได้: ${fail.join(', ')} (ใช้ราคาเดิม)`);
-  else toast(`อัปเดตราคาครบ ${ok} ตัว` + (fxOk ? '' : ' แต่ดึงค่าเงินไม่ได้'));
+  else toast(`อัปเดตราคาครบ ${ok} ตัว` + (fromUser && !fxManual && !fxOk ? ' แต่ดึงค่าเงินไม่ได้' : ''));
+}
+
+/* ---------- คิว Twelve Data: ไม่เกิน 7 ครั้งต่อ 60 วินาที (หน้าต่างเลื่อน) ทุกคำขอต้องผ่านที่นี่ ---------- */
+const TD_LIMIT = 7, TD_WIN = 60000, TD_DAY_CAP = 700, TD_COUNT_KEY = 'usportfolio:tdcount';
+const tdq = {times:[], items:[], busy:false, pausedUntil:0, timer:null};
+function tdCountGet(){ try{ const c = JSON.parse(localStorage.getItem(TD_COUNT_KEY) || 'null'); if(c && c.day === todayBKK()) return c.n | 0; }catch(e){} return 0; }
+function tdCountSet(n){ try{ localStorage.setItem(TD_COUNT_KEY, JSON.stringify({day:todayBKK(), n})); }catch(e){} }
+function tdWaitMs(){
+  const t = Date.now(); tdq.times = tdq.times.filter(x => t - x < TD_WIN);
+  if(tdq.pausedUntil > t) return tdq.pausedUntil - t;
+  return tdq.times.length >= TD_LIMIT ? tdq.times[0] + TD_WIN - t + 5 : 0;
+}
+const tdWaitSec = () => Math.ceil(tdWaitMs() / 1000);
+function tdQueue(path, opt){
+  return new Promise((res, rej) => {
+    const it = {path, res, rej, tries:0};
+    if(opt && opt.priority) tdq.items.unshift(it); else tdq.items.push(it);
+    tdPump();
+  });
+}
+async function tdSend(path){
+  const r = await fetch('https://api.twelvedata.com' + path + (path.includes('?') ? '&' : '?') + 'apikey=' + encodeURIComponent(S.settings.tdKey));
+  if(r.status === 429) return {status:'error', code:429, message:'rate limit'};
+  if(!r.ok) throw new Error(r.status);
+  return r.json();
+}
+function tdPump(){
+  if(tdq.busy || !tdq.items.length) return;
+  clearTimeout(tdq.timer);
+  const w = tdWaitMs();
+  if(w > 0){ tdq.timer = setTimeout(tdPump, w); return; }
+  const it = tdq.items.shift(); tdq.busy = true; tdq.times.push(Date.now()); tdCountSet(tdCountGet() + 1);
+  tdSend(it.path).then(j => {
+    const msg = String((j && j.message) || '');
+    if(j && j.status === 'error' && (j.code === 429 || /credits|rate limit|too many/i.test(msg))){
+      if(/for the day|daily/i.test(msg)){ tdCountSet(Math.max(tdCountGet(), 800)); it.rej(new Error(msg || 'โควตารายวันหมด')); return; }
+      if(++it.tries < 3){ tdq.pausedUntil = Date.now() + 60000; tdq.items.unshift(it); return; }
+      it.rej(new Error(msg || 'rate limit')); return;
+    }
+    it.res(j);
+  }, e => it.rej(e)).finally(() => { tdq.busy = false; tdPump(); });
+}
+
+/* ---------- ค่าเงิน USD/THB ระหว่างวัน ---------- */
+const FX_EVERY = 5 * 60000, FX_FRESH = 10 * 60000;
+let fxP = null, fxTimer = null, fxAgeTimer = null, fxLastTry = 0, fxPending = false;
+const fxAgeMs = () => S.fx.at ? Date.now() - new Date(S.fx.at).getTime() : Infinity;
+/* ตลาดค่าเงินปิดตั้งแต่ศุกร์ 17:00 ถึงอาทิตย์ 17:00 เวลานิวยอร์ก (America/New_York รวมเวลาออมแสง) */
+function fxMarketOpen(d){
+  const p = new Intl.DateTimeFormat('en-US', {timeZone:'America/New_York', weekday:'short', hour:'numeric', hourCycle:'h23'}).formatToParts(d || new Date());
+  const wd = p.find(x => x.type === 'weekday').value, h = +p.find(x => x.type === 'hour').value;
+  return wd === 'Sat' ? false : wd === 'Fri' ? h < 17 : wd === 'Sun' ? h >= 17 : true;
+}
+function fxApply(rate, src){
+  const old = S.fx.rate, oldSrc = S.fx.src === 'td' ? 'td' : 'daily';
+  const prev = Math.abs(rate - old) > 1e-9 ? (oldSrc === src ? old : null) : (oldSrc === src ? (S.fx.prev || null) : null);
+  const changed = Math.abs(rate - old) > 1e-9 || oldSrc !== src;
+  S.fx = {rate, at:new Date().toISOString(), src, prev};
+  save();
+  return changed;
+}
+function fxFetch(force){
+  if(fxP) return fxP;
+  if(S.settings.fxManual > 0 || !navigator.onLine) return Promise.resolve(false);
+  fxLastTry = Date.now();
+  fxP = (async () => {
+    let got = false, changed = false;
+    if(S.settings.tdKey && tdCountGet() < TD_DAY_CAP){
+      try{
+        const j = await tdQueue('/exchange_rate?symbol=USD/THB', {priority:true}), v = +(j && j.rate);
+        if(j && j.status !== 'error' && v > 0){ changed = fxApply(v, 'td'); got = true; }
+      }catch(e){}
+    }
+    if(!got && !(S.fx.src === 'td' && fxAgeMs() < 30 * 60000)){
+      for(const [url, pick] of [
+        ['https://api.frankfurter.app/latest?from=USD&to=THB', j => j.rates && j.rates.THB],
+        ['https://open.er-api.com/v6/latest/USD', j => j.rates && j.rates.THB]
+      ]){
+        try{ const v = pick(await getJSON(url)); if(v > 0){ changed = fxApply(v, 'daily'); got = true; break; } }catch(e){}
+      }
+    }
+    return got ? (changed ? 'changed' : true) : false;
+  })().then(r => { fxP = null; if(r === 'changed') fxPaint(true); else fxPaint(false); return !!r; }, () => { fxP = null; return false; });
+  return fxP;
+}
+function fxWant(){
+  if(S.settings.fxManual > 0 || document.hidden || fxP) return false;
+  if(Date.now() - fxLastTry < 60000) return false;
+  if(!fxMarketOpen()) return fxAgeMs() > 3 * 86400000;
+  return fxAgeMs() >= FX_EVERY - 1000;
+}
+function fxTick(){ if(fxWant()) fxFetch(false); }
+function fxStart(){
+  clearInterval(fxTimer); clearInterval(fxAgeTimer); fxTimer = fxAgeTimer = null;
+  if(document.hidden) return;
+  fxTick(); fxPaint(false);
+  fxTimer = setInterval(fxTick, 10000);
+  fxAgeTimer = setInterval(() => fxPaint(false), 30000);
+}
+function fxAgeText(){
+  const m = Math.floor(fxAgeMs() / 60000);
+  return m < 1 ? 'เมื่อสักครู่' : m < 60 ? m + ' นาทีที่แล้ว' : m < 1440 ? Math.floor(m / 60) + ' ชั่วโมงที่แล้ว' : when(S.fx.at);
+}
+function fxInner(){
+  const manual = S.settings.fxManual > 0;
+  let arrow = '';
+  if(!manual && S.fx.prev > 0){ const d = S.fx.rate - S.fx.prev; if(Math.abs(d) >= 0.005) arrow = ` <span class="${d > 0 ? 'gain' : 'loss'}">${d > 0 ? '▲' : '▼'}${fmt(Math.abs(d))}</span>`; }
+  let lab, k;
+  if(manual){ lab = 'ตั้งเอง'; k = 'man'; }
+  else if(S.fx.src !== 'td'){ lab = 'รายวัน'; k = 'day'; }
+  else if(fxAgeMs() <= FX_FRESH){ lab = 'สด'; k = 'live'; }
+  else { lab = 'ล่าสุดเมื่อ ' + when(S.fx.at); k = 'old'; }
+  const closed = !manual && !fxMarketOpen() ? ' <span class="fxb old">ตลาดค่าเงินปิด</span>' : '';
+  return `1 USD = ${fmt(fx())} บาท${arrow}${manual ? '' : ' · อัปเดต ' + fxAgeText()} <span class="fxb ${k}">${esc(lab)}</span>${closed}`;
+}
+function fxPaint(changed){
+  const line = $('#fxLine'); if(line) line.innerHTML = fxInner();
+  const lbl = $('#fxAutoLbl'); if(lbl) lbl.textContent = fmt(S.fx.rate);
+  if(!changed) return;
+  if(tab === 'chart' || tab === 'set') return;
+  const a = document.activeElement;
+  if(dlg.open || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && $('#view').contains(a))){ fxPending = true; return; }
+  fxPending = false;
+  if(tab === 'dca'){ dcaPaint(); return; }
+  const sel = '.hero-value, .hero-sub, .stat > span:last-child, .val';
+  const before = [...document.querySelectorAll(sel)].map(e => e.textContent), y = window.scrollY;
+  $('#view').innerHTML = tab === 'port' ? viewPort() : viewOver();
+  window.scrollTo(0, y);
+  const after = [...document.querySelectorAll(sel)];
+  if(after.length === before.length) after.forEach((e, i) => { if(e.textContent !== before[i]) e.classList.add('flash'); });
 }
 
 /* ---------- chart ---------- */
@@ -831,7 +969,7 @@ async function loadCandles(ticker){
   const key = S.settings.tdKey;
   if(!key){ if(stale) return stale.bars; throw new Error('nokey'); }
   try{
-    const j = await getJSON(`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(ticker)}&interval=1day&outputsize=1300&apikey=${encodeURIComponent(key)}`);
+    const j = await tdQueue(`/time_series?symbol=${encodeURIComponent(ticker)}&interval=1day&outputsize=1300`);
     if(j.status === 'error' || !Array.isArray(j.values) || !j.values.length) throw new Error(j.message || 'ไม่พบข้อมูล');
     const bars = j.values.map(x => ({time:String(x.datetime).slice(0,10), open:+x.open, high:+x.high, low:+x.low, close:+x.close, volume:+x.volume||0}))
       .filter(b => b.close > 0).sort((a,b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
@@ -1092,12 +1230,12 @@ function dcaOut(){
   const need = dcaNeed(), s = S.settings;
   let fetchBox = '';
   if(dcaJob){
-    fetchBox = `<section class="block"><p style="margin:0 0 10px">กำลังดึงราคาย้อนหลัง ${dcaJob.i}/${dcaJob.n}: <b>${esc(dcaJob.tk)}</b>${dcaJob.wait ? ` <span class="muted">(รอ ${dcaJob.wait} วินาทีก่อนตัวถัดไป)</span>` : ''}</p>
+    fetchBox = `<section class="block"><p style="margin:0 0 10px">กำลังดึงราคาย้อนหลัง ${dcaJob.i}/${dcaJob.n}: <b>${esc(dcaJob.tk)}</b>${dcaJob.wait ? ` <span class="muted">(รอคิว ${dcaJob.wait} วินาที)</span>` : ''}</p>
       <div class="bar-track"><span class="bar-fill" style="left:0;width:${(dcaJob.i - (dcaJob.wait ? 0 : 1)) / dcaJob.n * 100}%;background:var(--accent)"></span></div>
       <div class="actions"><button class="btn" data-act="dcastop">หยุด</button></div></section>`;
   } else if(need.length){
     fetchBox = `<section class="block"><p style="margin:0">ยังไม่มีราคาย้อนหลังของ ${need.map(esc).join(', ')} ซึ่งใช้คิดเกณฑ์ย่อจากจุดสูงสุดและแนวรับ</p>
-      ${s.tdKey ? `<p class="note muted">ดึงทีละตัว ห่างกัน 8 วินาที (ราว ${Math.max(0, need.length - 1) * 8} วินาที) เพราะ Twelve Data แพ็กเกจฟรีจำกัด 8 ครั้งต่อนาที</p>
+      ${s.tdKey ? `<p class="note muted">ดึงได้ไม่เกิน 7 ตัวต่อนาที (ราว ${Math.max(0, Math.ceil(need.length / 7) - 1)} นาที) เพราะ Twelve Data แพ็กเกจฟรีจำกัด 8 ครั้งต่อนาที และใช้ร่วมกับค่าเงินและกราฟ</p>
         <div class="actions" style="margin-top:8px"><button class="btn primary" data-act="dcafetch">ดึงราคาย้อนหลังที่ขาด (${need.length} ตัว)</button></div>`
       : '<p class="note muted">ใส่ Twelve Data API key ในหน้าตั้งค่าก่อนจึงจะดึงได้</p>'}</section>`;
   }
@@ -1113,14 +1251,12 @@ async function dcaFetchMissing(){
   const list = dcaNeed(); if(!list.length) return;
   dcaJob = {i:0, n:list.length, tk:'', wait:0, stop:false};
   const fail = []; let done = 0;
+  const wt = setInterval(() => { if(dcaJob){ const w = tdWaitSec(); if(w !== dcaJob.wait){ dcaJob.wait = w; dcaPaint(); } } }, 1000);
   for(let k = 0; k < list.length && !dcaJob.stop; k++){
-    dcaJob.i = k + 1; dcaJob.tk = list[k]; dcaJob.wait = 0; dcaPaint();
+    dcaJob.i = k + 1; dcaJob.tk = list[k]; dcaJob.wait = tdWaitSec(); dcaPaint();
     try{ await loadCandles(list[k]); done++; }catch(e){ fail.push(list[k]); }
-    if(k < list.length - 1){
-      for(let w = 8; w > 0 && !dcaJob.stop; w--){ dcaJob.wait = w; dcaPaint(); await sleep(1000); }
-    }
   }
-  dcaJob = null; dcaPaint();
+  clearInterval(wt); dcaJob = null; dcaPaint();
   toast(fail.length ? `ดึงได้ ${done} ตัว ดึงไม่ได้: ${fail.join(', ')}` : `ดึงราคาย้อนหลังแล้ว ${done} ตัว`);
 }
 
@@ -1457,7 +1593,7 @@ document.addEventListener('click', e => {
     case 'edit': openForm(id); break;
     case 'buy': openBuy(id); break;
     case 'del': openDelete(id); break;
-    case 'refresh': refresh(); break;
+    case 'refresh': refresh(true); break;
     case 'export': exportData(); break;
     case 'importtext': { const ta = $('#impText'); if(ta && ta.value.trim()) importText(ta.value); else toast('วางข้อมูลสำรองในช่องก่อน'); break; }
     case 'reset': openReset(); break;
@@ -1507,8 +1643,15 @@ window.addEventListener('offline', updateOffline);
 if('serviceWorker' in navigator && /^https?:$/.test(location.protocol))
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 
+/* วาดค่าเงินที่ค้างไว้เมื่อปิดฟอร์มหรือเลิกพิมพ์ */
+const fxFlush = () => { if(fxPending) setTimeout(() => fxPaint(true), 0); };
+dlg.addEventListener('close', fxFlush);
+document.addEventListener('focusout', fxFlush);
+document.addEventListener('visibilitychange', () => { if(document.hidden){ clearInterval(fxTimer); clearInterval(fxAgeTimer); fxTimer = fxAgeTimer = null; } else fxStart(); });
+
 render();
 if(S.settings.apiKey) refresh();
+fxStart();
 syncInit();
 </script>
 </body>
