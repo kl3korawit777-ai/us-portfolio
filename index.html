@@ -65,8 +65,9 @@ main{max-width:640px;margin:0 auto;padding:12px 16px calc(96px + env(safe-area-i
 .toolbar{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;align-items:center;scrollbar-width:none}
 .chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:6px 14px;min-height:40px;white-space:nowrap;cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
-select,input{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;
+select,input,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;
   padding:10px 12px;min-height:44px;width:100%}
+textarea{resize:vertical;font-family:ui-monospace,Consolas,monospace;font-size:.82rem}
 input:disabled,select:disabled{opacity:.5}
 .toolbar select{width:auto;flex:none;border-radius:999px;margin-left:auto;padding:6px 12px;min-height:40px}
 
@@ -428,6 +429,8 @@ function viewSet(){
     <section class="block"><h2>สำรองข้อมูล</h2>
       <p class="note muted" style="margin-top:0">ข้อมูลเก็บในเบราว์เซอร์ของเครื่องนี้ ถ้าล้างข้อมูลเบราว์เซอร์จะหาย ควรสำรองไว้เป็นระยะ และใช้ไฟล์เดียวกันย้ายข้อมูลระหว่างมือถือกับคอม</p>
       <div class="actions"><button class="btn" data-act="export">Export ไฟล์สำรอง</button><label class="btn" for="imp">Import ไฟล์สำรอง</label><input id="imp" type="file" accept="application/json,.json" hidden></div>
+      <label class="field" style="margin-top:14px"><span>หรือวางข้อมูลสำรอง (JSON) ที่นี่</span><textarea id="impText" rows="4" spellcheck="false" autocomplete="off" placeholder='{"version":1,"holdings":[…]}'></textarea></label>
+      <div class="actions" style="margin-top:0"><button class="btn" data-act="importtext">นำเข้าจากข้อความ</button></div>
     </section>
     <section class="block"><h2>รีเซ็ต</h2>
       <div class="actions" style="margin-top:0"><button class="btn danger" data-act="reset">ล้างข้อมูลทั้งหมด</button></div>
@@ -569,18 +572,19 @@ function exportData(){
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   toast('สร้างไฟล์สำรองแล้ว (ไม่รวม API key)');
 }
-function importFile(file){
-  if(!file) return;
-  const r = new FileReader();
-  r.onload = () => {
+function importText(text){
     try{
-      const d = JSON.parse(r.result);
+      const d = JSON.parse(text);
       if(!d || !Array.isArray(d.holdings)) throw 0;
       const key = S.settings.apiKey, tdk = S.settings.tdKey;
       S = {version:1, fx:d.fx || S.fx, settings:{...normSettings(d.settings), apiKey:(d.settings&&d.settings.apiKey) || key, tdKey:(d.settings&&d.settings.tdKey) || tdk}, holdings:d.holdings};
       openIds.clear(); save(); render(); toast(`นำเข้า ${d.holdings.length} รายการแล้ว`);
-    }catch(e){ toast('ไฟล์นี้ไม่ใช่ไฟล์สำรองของเว็บนี้'); }
-  };
+    }catch(e){ toast('ข้อมูลนี้ไม่ใช่ไฟล์สำรองของเว็บนี้'); }
+}
+function importFile(file){
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = () => importText(r.result);
   r.readAsText(file);
 }
 
@@ -988,6 +992,7 @@ document.addEventListener('click', e => {
     case 'del': openDelete(id); break;
     case 'refresh': refresh(); break;
     case 'export': exportData(); break;
+    case 'importtext': { const ta = $('#impText'); if(ta && ta.value.trim()) importText(ta.value); else toast('วางข้อมูลสำรองในช่องก่อน'); break; }
     case 'reset': openReset(); break;
     case 'chart': chartId = id; tab = 'chart'; render(); window.scrollTo(0,0); break;
     case 'back': tab = 'port'; render(); break;
