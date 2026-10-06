@@ -6,6 +6,11 @@
 <title>พอร์ตหุ้นสหรัฐ</title>
 <meta name="theme-color" content="#EEF2F1" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0F1621" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="พอร์ตหุ้นสหรัฐ">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -135,6 +140,15 @@ dialog::backdrop{background:rgba(10,15,25,.55)}
 .sr-tag.res{color:var(--loss)} .sr-tag.sup{color:var(--gain)}
 .sr-now{background:var(--chip);border-radius:8px;padding:8px 10px;margin:4px 0;border-top:0}
 .sr-now+.sr-row{border-top:0}
+.offline{max-width:640px;margin:8px auto 0;padding:8px 16px;font-size:.85rem;background:var(--chip);border-radius:10px;width:calc(100% - 32px)}
+.dca-row{padding:14px 16px}
+.dca-top{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.dca-sub{display:flex;justify-content:space-between;gap:12px;font-size:.85rem;color:var(--muted)}
+.why{margin:8px 0 0;padding-left:18px;font-size:.85rem}
+.why .miss{color:var(--loss)}
+.dca-row .actions{margin-top:10px}
+.dca-sum{display:flex;justify-content:space-between;gap:12px;font-weight:600;padding:2px 2px 14px}
+.dca-grp{margin:14px 2px 8px;display:flex;justify-content:space-between;gap:12px}
 #toast{position:fixed;left:50%;bottom:calc(72px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
   background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:12px;font-size:.9rem;opacity:0;
   pointer-events:none;transition:opacity .2s;width:max-content;max-width:calc(100% - 32px);z-index:20}
@@ -147,10 +161,12 @@ dialog::backdrop{background:rgba(10,15,25,.55)}
   <h1>พอร์ตหุ้นสหรัฐ</h1>
   <button class="btn" id="refreshBtn" data-act="refresh">อัปเดตราคา</button>
 </header>
+<div id="offline" class="offline" role="status" hidden></div>
 <main id="view"></main>
 <nav class="tabs" aria-label="เมนูหลัก">
   <button data-act="tab" data-tab="port">พอร์ต</button>
   <button data-act="tab" data-tab="over">ภาพรวม</button>
+  <button data-act="tab" data-tab="dca">DCA</button>
   <button data-act="tab" data-tab="set">ตั้งค่า</button>
 </nav>
 <dialog id="dlg"></dialog>
@@ -166,14 +182,25 @@ function mk(ticker,name,type,shares,costUSD,costTHB,price,changePct,div,yld,freq
   return {id:ticker,ticker,name,type,shares,costUSD,costTHB,price,changePct,priceAt:SEED_AT,priceOk:true,
     div,yield:yld,freq,sector,industry,exchange,priority,rating};
 }
+const DCA_DEF = {budget:0, corePct:50, rules:{
+  prio:{on:true, p1:40, p2:25, p3:10},
+  dip:{on:true, t1:20, s1:30, t2:10, s2:20, s3:5},
+  sup:{on:false, pct:3, score:15},
+  rating:{on:true, buy2:10, buy:5}
+}};
 const SEED = {
   version:1,
   fx:{rate:33.63, at:SEED_AT},
-  settings:{apiKey:'', tdKey:'', wht:15, fxManual:null, srN:5, srTol:2, srLook:12},
+  settings:{apiKey:'', tdKey:'', wht:15, fxManual:null, srN:5, srTol:2, srLook:12, dca:DCA_DEF},
   holdings:[]
 };
 
 const clone = o => JSON.parse(JSON.stringify(o));
+function normSettings(s){
+  s = s || {}; const d = s.dca || {}, r = d.rules || {}, rules = {};
+  for(const k in DCA_DEF.rules) rules[k] = {...DCA_DEF.rules[k], ...(r[k]||{})};
+  return {...SEED.settings, ...s, dca:{...DCA_DEF, ...d, rules}};
+}
 const $ = s => document.querySelector(s);
 const num = v => parseFloat(String(v ?? '').replace(/,/g,''));
 const fmt = (n,d=2) => Number(n||0).toLocaleString('th-TH',{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -185,7 +212,7 @@ const when = iso => iso ? new Date(iso).toLocaleString('th-TH',{day:'numeric',mo
 function load(){
   try{
     const raw = localStorage.getItem(KEY);
-    if(raw){ const d = JSON.parse(raw); if(d && Array.isArray(d.holdings)){ d.settings = {...SEED.settings, ...(d.settings||{})}; return d; } }
+    if(raw){ const d = JSON.parse(raw); if(d && Array.isArray(d.holdings)){ d.settings = normSettings(d.settings); return d; } }
   }catch(e){}
   return clone(SEED);
 }
@@ -231,9 +258,10 @@ function render(){
   if(tab==='chart' && !S.holdings.some(x=>x.id===chartId)) tab = 'port';
   const navTab = tab==='chart' ? 'port' : tab;
   document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-current', b.dataset.tab===navTab ? 'page' : 'false'));
-  $('#view').innerHTML = tab==='port' ? viewPort() : tab==='over' ? viewOver() : tab==='chart' ? viewChart() : viewSet();
+  $('#view').innerHTML = tab==='port' ? viewPort() : tab==='over' ? viewOver() : tab==='dca' ? viewDca() : tab==='chart' ? viewChart() : viewSet();
   if(tab==='set') bindSettings();
   if(tab==='chart') drawChart();
+  updateOffline();
 }
 
 function hero(t){
@@ -396,6 +424,7 @@ function viewSet(){
       <label class="field"><span>อัตราแลกเปลี่ยนแบบตั้งเอง (เว้นว่างเพื่อใช้อัตราอัตโนมัติ ${fmt(S.fx.rate)})</span><input id="set-fx" inputmode="decimal" value="${s.fxManual>0?s.fxManual:''}" placeholder="อัตโนมัติ"></label>
       <label class="field"><span>ภาษีหัก ณ ที่จ่ายของปันผล (%)</span><input id="set-wht" inputmode="decimal" value="${s.wht}"></label>
     </section>
+    ${dcaSettingsHTML()}
     <section class="block"><h2>สำรองข้อมูล</h2>
       <p class="note muted" style="margin-top:0">ข้อมูลเก็บในเบราว์เซอร์ของเครื่องนี้ ถ้าล้างข้อมูลเบราว์เซอร์จะหาย ควรสำรองไว้เป็นระยะ และใช้ไฟล์เดียวกันย้ายข้อมูลระหว่างมือถือกับคอม</p>
       <div class="actions"><button class="btn" data-act="export">Export ไฟล์สำรอง</button><label class="btn" for="imp">Import ไฟล์สำรอง</label><input id="imp" type="file" accept="application/json,.json" hidden></div>
@@ -496,13 +525,13 @@ function openForm(id){
   });
 }
 
-function openBuy(id){
+function openBuy(id, thbPrefill){
   const h = S.holdings.find(x=>x.id===id); if(!h) return;
   showDlg(`<div class="dlg-body"><h2>บันทึกการซื้อ ${esc(h.ticker)}</h2>
     <p class="note muted" style="margin:0 0 12px">ดูตัวเลขจากหน้ายืนยันคำสั่งซื้อในแอปโบรกเกอร์</p>
     <label class="field"><span>จำนวนหุ้นที่ได้</span><input name="shares" inputmode="decimal" autocomplete="off"></label>
     <label class="field"><span>ยอดที่จ่าย (USD)</span><input name="usd" inputmode="decimal" autocomplete="off"></label>
-    <label class="field"><span>ยอดที่จ่าย (บาท)</span><input name="thb" inputmode="decimal" autocomplete="off"></label>
+    <label class="field"><span>ยอดที่จ่าย (บาท)</span><input name="thb" inputmode="decimal" autocomplete="off" value="${thbPrefill > 0 ? thbPrefill.toFixed(2) : ''}"></label>
     <p class="note muted" style="margin:0 0 12px">ใส่อย่างน้อยหนึ่งยอด ถ้าใส่ยอดเดียว อีกยอดจะคำนวณด้วยอัตรา ${fmt(fx())} บาทต่อดอลลาร์</p>
     <p class="err loss" hidden></p>
   </div>${dlgActions('บันทึกการซื้อ')}`,
@@ -548,7 +577,7 @@ function importFile(file){
       const d = JSON.parse(r.result);
       if(!d || !Array.isArray(d.holdings)) throw 0;
       const key = S.settings.apiKey, tdk = S.settings.tdKey;
-      S = {version:1, fx:d.fx || S.fx, settings:{...SEED.settings, ...(d.settings||{}), apiKey:(d.settings&&d.settings.apiKey) || key, tdKey:(d.settings&&d.settings.tdKey) || tdk}, holdings:d.holdings};
+      S = {version:1, fx:d.fx || S.fx, settings:{...normSettings(d.settings), apiKey:(d.settings&&d.settings.apiKey) || key, tdKey:(d.settings&&d.settings.tdKey) || tdk}, holdings:d.holdings};
       openIds.clear(); save(); render(); toast(`นำเข้า ${d.holdings.length} รายการแล้ว`);
     }catch(e){ toast('ไฟล์นี้ไม่ใช่ไฟล์สำรองของเว็บนี้'); }
   };
@@ -559,6 +588,7 @@ function importFile(file){
 async function getJSON(url){ const r = await fetch(url); if(!r.ok) throw new Error(r.status); return r.json(); }
 async function refresh(){
   if(busy) return;
+  if(!navigator.onLine){ updateOffline(); toast('ออฟไลน์ ใช้ราคาล่าสุดที่บันทึกไว้'); return; }
   busy = true;
   const btn = $('#refreshBtn'); btn.disabled = true; btn.textContent = 'กำลังอัปเดต…';
   const now = () => new Date().toISOString();
@@ -785,6 +815,162 @@ async function drawChart(){
   });
 }
 
+/* ---------- DCA ---------- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let dcaJob = null;
+function readBars(t){
+  try{ const c = JSON.parse(localStorage.getItem('usportfolio:candles:' + t) || 'null'); if(c && Array.isArray(c.bars) && c.bars.length) return c; }catch(e){}
+  return null;
+}
+const pts = n => fmt(n, Number.isInteger(n) ? 0 : 1);
+
+function dcaScore(h, R){
+  const reasons = [], missing = []; let sc = 0, note = '';
+  const add = (p, txt) => { if(p > 0){ sc += p; reasons.push(`${txt} (+${pts(p)})`); } };
+  if(R.prio.on && h.priority >= 1 && h.priority <= 3) add(R.prio['p'+h.priority], `ลำดับ ${h.priority}`);
+  if(R.rating.on){
+    if(h.rating === 'แนะนำซื้อ') add(R.rating.buy2, 'นักวิเคราะห์: แนะนำซื้อ');
+    else if(h.rating === 'ซื้อ') add(R.rating.buy, 'นักวิเคราะห์: ซื้อ');
+  }
+  if(R.dip.on || R.sup.on){
+    const c = readBars(h.ticker), price = h.price;
+    if(!c) missing.push('ยังไม่มีราคาย้อนหลัง จึงไม่ได้คิดเกณฑ์ย่อจากจุดสูงสุดและแนวรับ');
+    else if(!(price > 0)) missing.push('ไม่มีราคาปัจจุบัน จึงไม่ได้คิดเกณฑ์ย่อจากจุดสูงสุดและแนวรับ');
+    else {
+      if(c.day !== todayBKK()) note = 'ใช้ข้อมูลย้อนหลังของวันที่ ' + c.day;
+      if(R.dip.on){
+        const cut = monthsBack(c.bars[c.bars.length-1].time, 12);
+        const hi = Math.max(...c.bars.filter(b => b.time >= cut).map(b => b.high));
+        const dip = Math.max(0, (hi - price) / hi * 100);
+        add(dip >= R.dip.t1 ? R.dip.s1 : dip >= R.dip.t2 ? R.dip.s2 : R.dip.s3, `ย่อจากจุดสูงสุด 52 สัปดาห์ ${fmt(dip, 0)}%`);
+      }
+      if(R.sup.on){
+        const z = srZones(c.bars, price);
+        if(!z.ok) missing.push('คำนวณแนวรับไม่ได้ (ข้อมูลไม่พอหรือไม่พบแนว)');
+        else if(z.sup.length){
+          const d = (price - z.sup[0].mid) / z.sup[0].mid * 100;
+          if(d >= 0 && d <= R.sup.pct) add(R.sup.score, `ราคาเหนือแนวรับ ${fmt(d, 1)}%`);
+        }
+      }
+    }
+  }
+  return {sc, reasons, missing, note};
+}
+
+/* แบ่งเป็นสตางค์ (จำนวนเต็ม) แล้วให้แถวสุดท้ายที่ได้เงินรับเศษ ผลรวมจึงเท่างบพอดี */
+function dcaCalc(){
+  const D = S.settings.dca, R = D.rules;
+  const budgetS = Math.max(0, Math.round((num(D.budget) || 0) * 100));
+  let coreS = Math.round(budgetS * D.corePct / 100), pickS = budgetS - coreS;
+  const etfs = S.holdings.filter(h => h.type === 'ETF'), stocks = S.holdings.filter(h => h.type !== 'ETF');
+  if(!etfs.length){ pickS += coreS; coreS = 0; }
+  if(!stocks.length){ coreS += pickS; pickS = 0; }
+  const core = etfs.map(h => ({h, kind:'core', amtS:Math.round(coreS / etfs.length), reasons:[`แกนหลัก แบ่งเท่ากัน ${etfs.length} ตัว`], missing:[], note:''}));
+  const sc = stocks.map(h => ({h, kind:'pick', ...dcaScore(h, R)}));
+  const total = sc.reduce((a, r) => a + r.sc, 0);
+  sc.forEach(r => { r.amtS = Math.round(total > 0 ? pickS * r.sc / total : pickS / sc.length);
+    if(!total && pickS > 0) r.reasons.push('ไม่มีหุ้นได้คะแนนเลย จึงแบ่งเท่ากัน'); });
+  sc.sort((a, b) => b.sc - a.sc || b.amtS - a.amtS);
+  const rows = [...core, ...sc];
+  const paid = rows.filter(r => r.amtS > 0);
+  if(paid.length && budgetS > 0){
+    const last = paid[paid.length - 1];
+    last.amtS = budgetS - rows.reduce((a, r) => a + (r === last ? 0 : r.amtS), 0);
+  }
+  return {rows, budgetS, total, coreS, pickS};
+}
+
+function dcaNeed(){
+  const R = S.settings.dca.rules;
+  if(!R.dip.on && !R.sup.on) return [];
+  return S.holdings.filter(h => h.type !== 'ETF' && !readBars(h.ticker)).map(h => h.ticker);
+}
+
+function dcaRowHTML(r){
+  const h = r.h, thb = r.amtS / 100, usd = thb / fx();
+  const sh = h.price > 0 ? usd / h.price : 0;
+  return `<li class="row dca-row">
+    <div class="dca-top"><span class="tk">${esc(h.ticker)} ${badge(h)}</span><span class="val">${fmt(thb)} ฿</span></div>
+    <div class="dca-sub"><span>${r.kind==='pick' ? 'คะแนน ' + pts(r.sc) : 'แกนหลัก'}</span><span>${h.price > 0 ? '≈ ' + fmt(sh, 4) + ' หุ้น (' + fmt(h.price) + ' USD)' : 'ไม่มีราคา'}</span></div>
+    <ul class="why">${r.reasons.map(x => `<li>${esc(x)}</li>`).join('')}${r.missing.map(x => `<li class="miss">ขาดข้อมูล: ${esc(x)}</li>`).join('')}${r.note ? `<li class="muted">${esc(r.note)}</li>` : ''}</ul>
+    ${thb > 0 ? `<div class="actions"><button class="btn" data-act="dcabuy" data-id="${esc(h.id)}" data-thb="${thb.toFixed(2)}">บันทึกการซื้อ</button></div>` : ''}
+  </li>`;
+}
+
+function dcaOut(){
+  if(!S.holdings.length) return '<div class="empty muted">ยังไม่มีหุ้นในพอร์ต เพิ่มหุ้นหรือ Import ไฟล์สำรองก่อน</div>';
+  const c = dcaCalc();
+  const sum = c.rows.reduce((a, r) => a + r.amtS, 0);
+  const need = dcaNeed(), s = S.settings;
+  let fetchBox = '';
+  if(dcaJob){
+    fetchBox = `<section class="block"><p style="margin:0 0 10px">กำลังดึงราคาย้อนหลัง ${dcaJob.i}/${dcaJob.n}: <b>${esc(dcaJob.tk)}</b>${dcaJob.wait ? ` <span class="muted">(รอ ${dcaJob.wait} วินาทีก่อนตัวถัดไป)</span>` : ''}</p>
+      <div class="bar-track"><span class="bar-fill" style="left:0;width:${(dcaJob.i - (dcaJob.wait ? 0 : 1)) / dcaJob.n * 100}%;background:var(--accent)"></span></div>
+      <div class="actions"><button class="btn" data-act="dcastop">หยุด</button></div></section>`;
+  } else if(need.length){
+    fetchBox = `<section class="block"><p style="margin:0">ยังไม่มีราคาย้อนหลังของ ${need.map(esc).join(', ')} ซึ่งใช้คิดเกณฑ์ย่อจากจุดสูงสุดและแนวรับ</p>
+      ${s.tdKey ? `<p class="note muted">ดึงทีละตัว ห่างกัน 8 วินาที (ราว ${Math.max(0, need.length - 1) * 8} วินาที) เพราะ Twelve Data แพ็กเกจฟรีจำกัด 8 ครั้งต่อนาที</p>
+        <div class="actions" style="margin-top:8px"><button class="btn primary" data-act="dcafetch">ดึงราคาย้อนหลังที่ขาด (${need.length} ตัว)</button></div>`
+      : '<p class="note muted">ใส่ Twelve Data API key ในหน้าตั้งค่าก่อนจึงจะดึงได้</p>'}</section>`;
+  }
+  const grp = (k, title) => { const rs = c.rows.filter(r => r.kind === k); if(!rs.length) return '';
+    return `<div class="dca-grp"><h2 style="margin:0">${title}</h2><span class="muted">${fmt(rs.reduce((a, r) => a + r.amtS, 0) / 100)} ฿</span></div><ul class="ledger">${rs.map(dcaRowHTML).join('')}</ul>`; };
+  return fetchBox + `<div class="dca-sum"><span>รวมที่แบ่ง</span><span>${fmt(sum / 100)} ฿ <span class="muted">จากงบ ${fmt(c.budgetS / 100)} ฿</span></span></div>`
+    + grp('core', 'แกนหลัก (ETF)') + grp('pick', 'ส่วนเลือก (หุ้นรายตัว)');
+}
+function dcaPaint(){ if(tab === 'dca'){ const o = $('#dcaOut'); if(o) o.innerHTML = dcaOut(); } }
+
+async function dcaFetchMissing(){
+  if(dcaJob) return;
+  const list = dcaNeed(); if(!list.length) return;
+  dcaJob = {i:0, n:list.length, tk:'', wait:0, stop:false};
+  const fail = []; let done = 0;
+  for(let k = 0; k < list.length && !dcaJob.stop; k++){
+    dcaJob.i = k + 1; dcaJob.tk = list[k]; dcaJob.wait = 0; dcaPaint();
+    try{ await loadCandles(list[k]); done++; }catch(e){ fail.push(list[k]); }
+    if(k < list.length - 1){
+      for(let w = 8; w > 0 && !dcaJob.stop; w--){ dcaJob.wait = w; dcaPaint(); await sleep(1000); }
+    }
+  }
+  dcaJob = null; dcaPaint();
+  toast(fail.length ? `ดึงได้ ${done} ตัว ดึงไม่ได้: ${fail.join(', ')}` : `ดึงราคาย้อนหลังแล้ว ${done} ตัว`);
+}
+
+function viewDca(){
+  const D = S.settings.dca;
+  return `<section class="block"><h2>DCA ประจำเดือน</h2>
+      <label class="field"><span>งบเดือนนี้ (บาท)</span><input id="dcaBudget" inputmode="decimal" autocomplete="off" value="${D.budget || ''}" placeholder="เช่น 5000"></label>
+      <label class="field"><span>สัดส่วนแกนหลัก ETF (%)</span><input id="dcaCore" inputmode="decimal" autocomplete="off" value="${D.corePct}"></label>
+      <p class="note muted" style="margin:0">แกนหลักแบ่งเท่ากันทุก ETF ส่วนที่เหลือแบ่งให้หุ้นรายตัวตามคะแนน ปรับกฎได้ในหน้าตั้งค่า</p>
+    </section>
+    <div id="dcaOut">${dcaOut()}</div>
+    <p class="note muted">คะแนนคำนวณตามกฎที่ผู้ใช้ตั้งเอง ไม่ใช่คำแนะนำการลงทุน</p>`;
+}
+
+const dcaGet = path => path.split('.').reduce((o, k) => o[k], S.settings.dca);
+function setDcaRule(el){
+  const parts = el.dataset.dca.split('.'), key = parts.pop();
+  const obj = parts.reduce((o, k) => o[k], S.settings.dca);
+  if(el.type === 'checkbox') obj[key] = el.checked;
+  else { const n = num(el.value); if(!(n >= 0)){ el.value = obj[key]; toast('ใส่ตัวเลขตั้งแต่ 0 ขึ้นไป'); return; } obj[key] = n; }
+  save(); toast('บันทึกกฎ DCA แล้ว');
+}
+function dcaSettingsHTML(){
+  const f = (p, l) => `<label class="field"><span>${l}</span><input data-dca="rules.${p}" inputmode="decimal" value="${dcaGet('rules.' + p)}"></label>`;
+  const on = (p, l) => `<div class="toggles" style="margin-bottom:0"><label><input type="checkbox" data-dca="rules.${p}.on" ${dcaGet('rules.' + p + '.on') ? 'checked' : ''}> <b>${l}</b></label></div>`;
+  return `<section class="block"><h2>กฎคะแนน DCA</h2>
+      ${on('prio', 'ลำดับความสำคัญ')}
+      <div class="grid2" style="margin-top:6px">${f('prio.p1', 'ลำดับ 1 (คะแนน)')}${f('prio.p2', 'ลำดับ 2 (คะแนน)')}${f('prio.p3', 'ลำดับ 3 (คะแนน)')}</div>
+      ${on('dip', 'ราคาย่อจากจุดสูงสุด 52 สัปดาห์')}
+      <div class="grid2" style="margin-top:6px">${f('dip.t1', 'ย่อตั้งแต่ (%) ระดับสูง')}${f('dip.s1', 'คะแนนระดับสูง')}${f('dip.t2', 'ย่อตั้งแต่ (%) ระดับกลาง')}${f('dip.s2', 'คะแนนระดับกลาง')}${f('dip.s3', 'คะแนนถ้าย่อน้อยกว่าระดับกลาง')}</div>
+      ${on('sup', 'ราคาอยู่เหนือแนวรับที่ใกล้ที่สุด')}
+      <div class="grid2" style="margin-top:6px">${f('sup.pct', 'เหนือแนวรับไม่เกิน (%)')}${f('sup.score', 'คะแนน')}</div>
+      <p class="note muted" style="margin:0 0 12px">เกณฑ์นี้ซ้อนกับเกณฑ์ราคาย่อ จึงปิดไว้เป็นค่าเริ่มต้น</p>
+      ${on('rating', 'นักวิเคราะห์')}
+      <div class="grid2" style="margin-top:6px">${f('rating.buy2', 'แนะนำซื้อ (คะแนน)')}${f('rating.buy', 'ซื้อ (คะแนน)')}</div>
+    </section>`;
+}
+
 /* ---------- events ---------- */
 let tt;
 function toast(m){ const el = $('#toast'); el.textContent = m; el.classList.add('show'); clearTimeout(tt); tt = setTimeout(()=>el.classList.remove('show'), 3400); }
@@ -806,6 +992,9 @@ document.addEventListener('click', e => {
     case 'chart': chartId = id; tab = 'chart'; render(); window.scrollTo(0,0); break;
     case 'back': tab = 'port'; render(); break;
     case 'range': chartRange = b.dataset.v; render(); break;
+    case 'dcabuy': openBuy(id, +b.dataset.thb); break;
+    case 'dcafetch': dcaFetchMissing(); break;
+    case 'dcastop': if(dcaJob) dcaJob.stop = true; break;
   }
 });
 document.addEventListener('change', e => {
@@ -815,7 +1004,22 @@ document.addEventListener('change', e => {
   else if(t.id === 'tgMA'){ chartOpts.ma = t.checked; render(); }
   else if(t.id === 'tgVol'){ chartOpts.vol = t.checked; render(); }
   else if(t.id === 'tgSR'){ chartOpts.sr = t.checked; render(); }
+  else if(t.dataset.dca) setDcaRule(t);
 });
+document.addEventListener('input', e => {
+  const t = e.target;
+  if(t.id === 'dcaBudget'){ S.settings.dca.budget = Math.max(0, num(t.value) || 0); save(); dcaPaint(); }
+  else if(t.id === 'dcaCore'){ const n = num(t.value); if(n >= 0 && n <= 100){ S.settings.dca.corePct = n; save(); dcaPaint(); } }
+});
+function updateOffline(){
+  const el = $('#offline'); if(!el) return;
+  el.hidden = navigator.onLine;
+  if(!navigator.onLine) el.textContent = 'ออฟไลน์ ใช้ราคาล่าสุดที่บันทึกไว้เมื่อ ' + when(lastPriceAt());
+}
+window.addEventListener('online', updateOffline);
+window.addEventListener('offline', updateOffline);
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol))
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 
 render();
 if(S.settings.apiKey) refresh();
