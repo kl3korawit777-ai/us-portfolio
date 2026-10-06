@@ -509,8 +509,7 @@ function viewSet(){
   return `<div class="cols">${syncSectionHTML()}<section class="block"><h2>ดึงราคาอัตโนมัติ</h2>
       <label class="field"><span>Finnhub API key</span><input id="set-key" type="password" autocomplete="off" value="${esc(s.apiKey)}" placeholder="วาง key ที่นี่"></label>
       <p class="note muted">สมัครฟรีที่ finnhub.io แล้วคัดลอก API key มาวาง key เก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่อยู่ในโค้ดของเว็บ</p>
-      <div class="actions"><button class="btn primary" data-act="refresh">อัปเดตราคาตอนนี้</button><button class="btn" data-act="fhdivtest">ทดสอบข้อมูลปันผล</button></div>
-      <pre id="fhDivOut" class="note muted" style="white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 0" hidden></pre>
+      <div class="actions"><button class="btn primary" data-act="refresh">อัปเดตราคาตอนนี้</button></div>
     </section>
     <section class="block"><h2>กราฟและแนวรับแนวต้าน</h2>
       <label class="field"><span>Twelve Data API key (ใช้ดึงราคาย้อนหลังสำหรับกราฟ)</span><input id="set-td" type="password" autocomplete="off" value="${esc(s.tdKey)}" placeholder="วาง key ที่นี่"></label>
@@ -1380,26 +1379,6 @@ async function syncSignOut(){
 document.addEventListener('visibilitychange', () => { if(!document.hidden) syncNow('focus'); });
 window.addEventListener('online', () => syncNow('online'));
 
-/* ทดสอบว่า Finnhub แพ็กเกจของผู้ใช้เรียกข้อมูลปันผลได้ไหม (ใช้ key ที่ผู้ใช้ใส่ไว้ในเว็บเอง) */
-async function fhDivTest(){
-  const out = $('#fhDivOut'), key = S.settings.apiKey;
-  out.hidden = false;
-  if(!key){ out.textContent = 'ใส่ Finnhub API key ในช่องด้านบนก่อน'; return; }
-  if(!navigator.onLine){ out.textContent = 'ออฟไลน์'; return; }
-  const to = todayBKK(), from = monthsBack(to, 12);
-  const lines = [];
-  for(const [name, path] of [['stock/dividend', `stock/dividend?symbol=IBM&from=${from}&to=${to}`], ['stock/dividend2', 'stock/dividend2?symbol=IBM']]){
-    out.textContent = `กำลังเรียก ${name}…\n` + lines.join('\n');
-    try{
-      const r = await fetch(`https://finnhub.io/api/v1/${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(key)}`);
-      const txt = await r.text(); let j = null; try{ j = JSON.parse(txt); }catch(e){}
-      const arr = Array.isArray(j) ? j : j && Array.isArray(j.data) ? j.data : null;
-      lines.push(`${name}: HTTP ${r.status} ${arr && arr.length ? 'ใช้ได้ ' + arr.length + ' รายการ' : 'ใช้ไม่ได้หรือไม่มีข้อมูล'}\n${txt.slice(0, 400)}`);
-    }catch(e){ lines.push(`${name}: เรียกไม่สำเร็จ ${errMsg(e)}`); }
-  }
-  out.textContent = lines.join('\n\n');
-}
-
 /* ---------- events ---------- */
 let tt;
 function toast(m){ const el = $('#toast'); el.textContent = m; el.classList.add('show'); clearTimeout(tt); tt = setTimeout(()=>el.classList.remove('show'), 3400); }
@@ -1433,7 +1412,6 @@ document.addEventListener('click', e => {
     case 'syncout': syncSignOut(); break;
     case 'syncpass': syncLoginPassword(); break;
     case 'synclink': syncSendLink(); break;
-    case 'fhdivtest': fhDivTest(); break;
     case 'dcabuy': openBuy(id, +b.dataset.thb); break;
     case 'dcafetch': dcaFetchMissing(); break;
     case 'dcastop': if(dcaJob) dcaJob.stop = true; break;
